@@ -8,10 +8,11 @@ use clap::{Args, Parser, Subcommand};
 use directories::ProjectDirs;
 use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
-use tracing::{error, info};
+use tracing::error;
 
 lazy_static! {
-    pub static ref PROJECT_DIRS: ProjectDirs = ProjectDirs::from("dev", "setaria", "chronicle").unwrap();
+    pub static ref PROJECT_DIRS: ProjectDirs =
+        ProjectDirs::from("dev", "setaria", "chronicle").unwrap();
     pub static ref CONFIG: Config = get_config();
 }
 
@@ -21,14 +22,14 @@ pub const BSKY_EMAIL: &str = "bsky-email";
 pub const BSKY_PASSWORD: &str = "bsky-password";
 
 pub mod prelude {
-    pub use crate::import::{import_from_link, import};
+    pub use crate::import::{import, import_from_link};
 }
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
 pub struct Arguments {
     #[command(subcommand)]
-    pub command: Command
+    pub command: Command,
 }
 
 #[derive(Subcommand)]
@@ -60,10 +61,7 @@ pub enum Command {
 
 #[derive(Subcommand)]
 pub enum ServiceCredentials {
-    Bsky {
-        email: String,
-        password: String,
-    },
+    Bsky { email: String, password: String },
 }
 
 #[derive(Args)]

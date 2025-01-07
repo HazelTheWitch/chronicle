@@ -13,10 +13,11 @@ pub async fn import(db: &sqlx::SqlitePool, record: Record) -> Result<(), sqlx::E
             .execute(db)
             .await?;
 
-        let author_id: (i32,) = sqlx::query_as(r#"SELECT "author_id" FROM "authors" WHERE "name" = ? LIMIT 1;"#)
-            .bind(&author)
-            .fetch_one(db)
-            .await?;
+        let author_id: (i32,) =
+            sqlx::query_as(r#"SELECT "author_id" FROM "authors" WHERE "name" = ? LIMIT 1;"#)
+                .bind(&author)
+                .fetch_one(db)
+                .await?;
 
         Some(author_id.0)
     } else {
@@ -46,11 +47,11 @@ pub async fn import(db: &sqlx::SqlitePool, record: Record) -> Result<(), sqlx::E
 
     query.execute(db).await?;
 
-    let mut query_builder = sqlx::QueryBuilder::new(r#"INSERT INTO "work_tags"("tag", "work_id") "#);
+    let mut query_builder =
+        sqlx::QueryBuilder::new(r#"INSERT INTO "work_tags"("tag", "work_id") "#);
 
     query_builder.push_values(record.tags.iter(), |mut b, tag| {
-        b.push_bind(tag)
-            .push_bind(&work_id.0);
+        b.push_bind(tag).push_bind(&work_id.0);
     });
 
     let query = query_builder.build();

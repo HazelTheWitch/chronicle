@@ -1,7 +1,16 @@
-use std::{fs::{self, OpenOptions}, path::PathBuf, sync::Condvar};
+use std::{
+    fs::{self, OpenOptions},
+    path::PathBuf,
+    sync::Condvar,
+};
 
 use anyhow::bail;
-use chronicle::{import::{import, import_from_link}, record::Record, Arguments, Command, ServiceCredentials, WorkDetails, BSKY_EMAIL, BSKY_PASSWORD, CONFIG, PROJECT_DIRS, SERVICE_NAME};
+use chronicle::{
+    import::{import, import_from_link},
+    record::Record,
+    Arguments, Command, ServiceCredentials, WorkDetails, BSKY_EMAIL, BSKY_PASSWORD, CONFIG,
+    PROJECT_DIRS, SERVICE_NAME,
+};
 use clap::Parser;
 use sqlx::{migrate, SqlitePool};
 use tracing::{info, level_filters::LevelFilter, warn, Level};
@@ -11,7 +20,13 @@ use uuid::Uuid;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    tracing_subscriber::fmt().with_env_filter(EnvFilter::builder().with_default_directive(LevelFilter::from_level(Level::INFO).into()).from_env()?).init();
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            EnvFilter::builder()
+                .with_default_directive(LevelFilter::from_level(Level::INFO).into())
+                .from_env()?,
+        )
+        .init();
 
     let args = Arguments::parse();
 
@@ -20,10 +35,20 @@ async fn main() -> anyhow::Result<()> {
             fs::create_dir_all(directory)?;
         }
 
-        OpenOptions::new().create(true).write(true).open(&CONFIG.database_path)?;
+        OpenOptions::new()
+            .create(true)
+            .write(true)
+            .open(&CONFIG.database_path)?;
     }
 
-    let database_url = format!("sqlite:///{path}", path = CONFIG.database_path.to_string_lossy());
+    if !fs::exists(&CONFIG.data_path)? {
+        fs::create_dir_all(&CONFIG.data_path)?;
+    }
+
+    let database_url = format!(
+        "sqlite:///{path}",
+        path = CONFIG.database_path.to_string_lossy()
+    );
 
     let db = SqlitePool::connect(&database_url).await?;
 
@@ -33,17 +58,18 @@ async fn main() -> anyhow::Result<()> {
         Command::Search { query } => todo!(),
         Command::Import { url, details } => {
             import_from_link(&url).await?;
-        },
+        }
         Command::Add {
             path,
             copy,
-            details: WorkDetails {
-                tags,
-                title,
-                author,
-                url,
-                caption,
-            },
+            details:
+                WorkDetails {
+                    tags,
+                    title,
+                    author,
+                    url,
+                    caption,
+                },
         } => {
             if !fs::metadata(&path)?.is_file() {
                 bail!("Provided path is not a file.");
@@ -66,7 +92,7 @@ async fn main() -> anyhow::Result<()> {
                         };
 
                         let new_path = CONFIG.data_path.join(&file_name);
-                        
+
                         fs::copy(&path, &new_path)?;
 
                         info!("Copied file to DATA_DIR/{file_name}");
@@ -78,22 +104,33 @@ async fn main() -> anyhow::Result<()> {
                 path.strip_prefix(&CONFIG.data_path)?
             };
 
-            import(&db, Record { path: relative_path.to_owned(), tags, title, url, author, caption }).await?;
-        },
+            import(
+                &db,
+                Record {
+                    path: relative_path.to_owned(),
+                    tags,
+                    title,
+                    url,
+                    author,
+                    caption,
+                },
+            )
+            .await?;
+        }
         Command::WriteConfig => {
             let config_path = PROJECT_DIRS.config_dir().join("config.toml");
 
-            fs::write(config_path, toml::to_string_pretty(&*CONFIG)?)?;
-        },
-        Command::Login { service } => {
-            match service {
-                ServiceCredentials::Bsky { email, password } => {
-                    let password_entry = keyring::Entry::new(SERVICE_NAME, BSKY_PASSWORD)?;
-                    password_entry.set_password(&password)?;
+            fs::create_dir_all(PROJECT_DIRS.config_dir())?;
 
-                    let email_entry = keyring::Entry::new(SERVICE_NAME, BSKY_EMAIL)?;
-                    email_entry.set_password(&email)?;
-                },
+            fs::write(config_path, toml::to_string_pretty(&*CONFIG)?)?;
+        }
+        Command::Login { service } => match service {
+            ServiceCredentials::Bsky { email, password } => {
+                let password_entry = keyring::Entry::new(SERVICE_NAME, BSKY_PASSWORD)?;
+                password_entry.set_password(&password)?;
+
+                let email_entry = keyring::Entry::new(SERVICE_NAME, BSKY_EMAIL)?;
+                email_entry.set_password(&email)?;
             }
         },
     }
