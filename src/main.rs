@@ -8,7 +8,7 @@ use anyhow::bail;
 use chronicle::{
     import::{import, import_from_link},
     record::Record,
-    Arguments, Command, ServiceCredentials, WorkDetails, BSKY_EMAIL, BSKY_PASSWORD, CONFIG,
+    Arguments, Command, ServiceCredentials, WorkDetails, BSKY_IDENTIFIER, BSKY_PASSWORD, CONFIG,
     PROJECT_DIRS, SERVICE_NAME,
 };
 use clap::Parser;
@@ -56,8 +56,8 @@ async fn main() -> anyhow::Result<()> {
 
     match args.command {
         Command::Search { query } => todo!(),
-        Command::Import { url, details } => {
-            import_from_link(&url).await?;
+        Command::Import { link, details } => {
+            import_from_link(&db, &link, details).await?;
         }
         Command::Add {
             path,
@@ -108,11 +108,13 @@ async fn main() -> anyhow::Result<()> {
                 &db,
                 Record {
                     path: relative_path.to_owned(),
-                    tags,
-                    title,
-                    url,
-                    author,
-                    caption,
+                    details: WorkDetails {
+                        tags,
+                        title,
+                        author,
+                        url,
+                        caption,
+                    },
                 },
             )
             .await?;
@@ -125,12 +127,15 @@ async fn main() -> anyhow::Result<()> {
             fs::write(config_path, toml::to_string_pretty(&*CONFIG)?)?;
         }
         Command::Login { service } => match service {
-            ServiceCredentials::Bsky { email, password } => {
+            ServiceCredentials::Bsky {
+                identifier,
+                password,
+            } => {
                 let password_entry = keyring::Entry::new(SERVICE_NAME, BSKY_PASSWORD)?;
                 password_entry.set_password(&password)?;
 
-                let email_entry = keyring::Entry::new(SERVICE_NAME, BSKY_EMAIL)?;
-                email_entry.set_password(&email)?;
+                let identifier_entry = keyring::Entry::new(SERVICE_NAME, BSKY_IDENTIFIER)?;
+                identifier_entry.set_password(&identifier)?;
             }
         },
     }

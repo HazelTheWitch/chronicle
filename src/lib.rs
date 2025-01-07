@@ -18,7 +18,7 @@ lazy_static! {
 
 pub const SERVICE_NAME: &str = "chronicle";
 
-pub const BSKY_EMAIL: &str = "bsky-email";
+pub const BSKY_IDENTIFIER: &str = "bsky-identifier";
 pub const BSKY_PASSWORD: &str = "bsky-password";
 
 pub mod prelude {
@@ -47,8 +47,8 @@ pub enum Command {
         details: WorkDetails,
     },
     Import {
-        /// The url of the work.
-        url: String,
+        /// The link to the work.
+        link: String,
         #[command(flatten)]
         details: WorkDetails,
     },
@@ -61,10 +61,13 @@ pub enum Command {
 
 #[derive(Subcommand)]
 pub enum ServiceCredentials {
-    Bsky { email: String, password: String },
+    Bsky {
+        identifier: String,
+        password: String,
+    },
 }
 
-#[derive(Args)]
+#[derive(Default, Clone, Args)]
 pub struct WorkDetails {
     /// A list of tags to associate with the work.
     pub tags: Vec<String>,
