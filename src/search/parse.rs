@@ -1,7 +1,7 @@
 use nom::{
     branch::alt,
     bytes::complete::tag,
-    character::complete::{alphanumeric1, space0, space1},
+    character::complete::{alphanumeric1, one_of, space0, space1},
     combinator::{fail, map, recognize},
     multi::{many1, separated_list1},
     sequence::{delimited, pair, preceded, separated_pair},
@@ -32,9 +32,17 @@ fn quote(input: &str) -> IResult<&str, &str, nom::error::VerboseError<&str>> {
     alt((tag("'"), tag("\"")))(input)
 }
 
+fn special_chars(input: &str) -> IResult<&str, &str, nom::error::VerboseError<&str>> {
+    recognize(many1(one_of("$.+!*'(),;/?:@=&")))(input)
+}
+
 fn string(input: &str) -> IResult<&str, &str, nom::error::VerboseError<&str>> {
     alt((
-        delimited(quote, recognize(many1(alt((space1, identifier)))), quote),
+        delimited(
+            quote,
+            recognize(many1(alt((space1, identifier, special_chars)))),
+            quote,
+        ),
         preceded(nom::combinator::not(not), identifier),
     ))(input)
 }
