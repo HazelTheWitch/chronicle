@@ -15,6 +15,7 @@ fn term_kind(input: &str) -> IResult<&str, &str, nom::error::VerboseError<&str>>
         tag("tag"),
         tag("title"),
         tag("artist"),
+        tag("author"),
         tag("caption"),
         tag("url"),
         tag("t"),
@@ -55,7 +56,7 @@ fn tagged_term(input: &str) -> IResult<&str, QueryTerm, nom::error::VerboseError
     let term = match kind {
         "tag" => QueryTerm::Tag(text),
         "t" | "title" => QueryTerm::Title(text),
-        "a" | "artist" => QueryTerm::Artist(text),
+        "a" | "artist" | "author" => QueryTerm::Author(text),
         "c" | "caption" => QueryTerm::Caption(text),
         "u" | "url" => QueryTerm::Url(text),
         _ => return fail("invalid term tag"),
@@ -146,7 +147,7 @@ mod tests {
     #[test]
     fn test_term_kind() {
         for kind in &[
-            "t", "title", "tag", "a", "artist", "c", "caption", "u", "url",
+            "t", "title", "tag", "a", "artist", "author", "c", "caption", "u", "url",
         ] {
             assert_matches(term_kind, kind);
         }

@@ -17,9 +17,9 @@ impl QueryTerm {
                     .push_bind(title)
                     .push(" || '%'");
             }
-            QueryTerm::Artist(artist) => {
-                b.push("SELECT work_id FROM works WHERE artist = ")
-                    .push_bind(artist);
+            QueryTerm::Author(author) => {
+                b.push("SELECT work_id FROM works JOIN authors ON works.author_id = authors.author_id WHERE authors.name = ")
+                    .push_bind(author);
             }
             QueryTerm::Caption(caption) => {
                 b.push("SELECT work_id FROM works WHERE caption LIKE '%' || ")

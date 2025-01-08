@@ -16,7 +16,7 @@ mod parse;
 pub enum QueryTerm {
     Tag(String),
     Title(String),
-    Artist(String),
+    Author(String),
     Caption(String),
     Url(String),
 }
@@ -26,7 +26,7 @@ impl Display for QueryTerm {
         match self {
             QueryTerm::Tag(text) => write!(f, r#"tag:"{text}""#),
             QueryTerm::Title(text) => write!(f, r#"title:"{text}""#),
-            QueryTerm::Artist(text) => write!(f, r#"artist:"{text}""#),
+            QueryTerm::Author(text) => write!(f, r#"author:"{text}""#),
             QueryTerm::Caption(text) => write!(f, r#"caption:"{text}""#),
             QueryTerm::Url(text) => write!(f, r#"url:"{text}""#),
         }
@@ -43,7 +43,7 @@ impl Hash for QueryTerm {
         match self {
             QueryTerm::Tag(text) => hash_and(state, 1, text),
             QueryTerm::Title(text) => hash_and(state, 2, text),
-            QueryTerm::Artist(text) => hash_and(state, 3, text),
+            QueryTerm::Author(text) => hash_and(state, 3, text),
             QueryTerm::Caption(text) => hash_and(state, 4, text),
             QueryTerm::Url(text) => hash_and(state, 5, text),
         }
