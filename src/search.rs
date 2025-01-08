@@ -4,11 +4,12 @@ use std::{
     iter::{repeat_n, repeat_with},
 };
 
-use sqlx::query;
+use builder::SearchQueryBuilder;
+use sqlx::{query, Execute};
 
-use crate::utils::hash_t;
+use crate::{utils::hash_t, Work};
 
-mod builder;
+pub mod builder;
 mod parse;
 
 #[derive(PartialEq, Eq, Debug)]
@@ -49,6 +50,12 @@ impl Hash for QueryTerm {
     }
 }
 
+impl From<QueryTerm> for Query {
+    fn from(term: QueryTerm) -> Self {
+        Self::Term(term)
+    }
+}
+
 #[derive(PartialEq, Eq, Debug)]
 pub enum Query {
     Term(QueryTerm),
@@ -85,6 +92,10 @@ impl Query {
         }
 
         Ok(result.into_normalized())
+    }
+
+    pub fn table_name(&self) -> String {
+        format!("t{hash:X}", hash = hash_t(self))
     }
 
     pub fn into_normalized(self) -> Self {
@@ -167,7 +178,23 @@ impl Query {
     }
 }
 
-pub async fn search(search_query: &str) {}
+pub async fn search(db: &sqlx::SqlitePool, search_query: &str) -> anyhow::Result<Vec<Work>> {
+    let query = Query::parse(search_query)?;
+
+    let mut builder = SearchQueryBuilder::new();
+
+    let table = builder.push_query_table(&query);
+
+    builder.query_builder.push(format_args!(
+        "SELECT * FROM works WHERE work_id IN (SELECT work_id FROM {table});\n"
+    ));
+
+    builder.drop_tables();
+
+    let built = builder.query_builder.build_query_as();
+
+    Ok(built.fetch_all(db).await?)
+}
 
 #[cfg(test)]
 mod tests {

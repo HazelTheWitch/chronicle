@@ -37,6 +37,8 @@ pub struct Arguments {
 #[derive(Subcommand)]
 pub enum Command {
     Search {
+        #[arg(short, long)]
+        destination: Option<PathBuf>,
         query: String,
     },
     Add {
@@ -126,4 +128,15 @@ pub fn get_config() -> Config {
     };
 
     config
+}
+
+#[derive(sqlx::FromRow)]
+pub struct Work {
+    pub path: String,
+    pub work_id: i32,
+    pub title: Option<String>,
+    pub author_id: Option<i32>,
+    pub caption: Option<String>,
+    pub url: Option<String>,
+    pub hash: i32,
 }

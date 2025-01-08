@@ -4,11 +4,13 @@ use std::{
     path::PathBuf,
 };
 
+use bytemuck::cast;
+
 use crate::{WorkDetails, CONFIG};
 
 pub struct Record {
     pub path: PathBuf,
-    pub hash: u32,
+    pub hash: i32,
     pub details: WorkDetails,
 }
 
@@ -18,7 +20,7 @@ impl Record {
 
         Ok(Self {
             path,
-            hash,
+            hash: cast(hash),
             details,
         })
     }

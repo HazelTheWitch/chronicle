@@ -58,12 +58,13 @@ pub async fn import(db: &sqlx::SqlitePool, record: Record) -> Result<(), sqlx::E
         None
     };
 
-    let work_id: (i32,) = sqlx::query_as(r#"INSERT INTO works(path, url, author_id, title, caption) VALUES (?, ?, ?, ?, ?) RETURNING work_id;"#)
+    let work_id: (i32,) = sqlx::query_as(r#"INSERT INTO works(path, url, author_id, title, caption, hash) VALUES (?, ?, ?, ?, ?, ?) RETURNING work_id;"#)
         .bind(&record.path.to_string_lossy())
         .bind(&details.url)
         .bind(&author_id)
         .bind(&details.title)
         .bind(&details.caption)
+        .bind(&record.hash)
         .fetch_one(db)
         .await?;
 

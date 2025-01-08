@@ -103,7 +103,7 @@ pub async fn import_from_bsky(url: &str) -> Result<Vec<Record>, anyhow::Error> {
 
             records.push(Record {
                 path: PathBuf::from(file_name),
-                hash: crc32fast::hash(&data),
+                hash: bytemuck::cast(crc32fast::hash(&data)),
                 details: work_details.clone(),
             });
         }

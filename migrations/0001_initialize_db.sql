@@ -5,6 +5,7 @@ CREATE TABLE "works" (
     "url" TEXT,
     "caption" TEXT,
     "author_id" INTEGER,
+    "hash" INTEGER NOT NULL,
     FOREIGN KEY("author_id") REFERENCES "authors"("author_id") ON DELETE CASCADE ON UPDATE CASCADE,
     PRIMARY KEY("work_id" AUTOINCREMENT)
 );

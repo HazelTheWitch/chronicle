@@ -8,14 +8,14 @@ use anyhow::bail;
 use chronicle::{
     import::{import, import_from_link, work_present_with_link},
     record::Record,
-    search::Query,
+    search::{builder::SearchQueryBuilder, search, Query},
     tag::tag_tag,
     utils::hash_t_hex,
     Arguments, Command, ServiceCredentials, WorkDetails, BSKY_IDENTIFIER, BSKY_PASSWORD, CONFIG,
     PROJECT_DIRS, SERVICE_NAME,
 };
 use clap::Parser;
-use sqlx::{migrate, SqlitePool};
+use sqlx::{migrate, query, Execute, SqlitePool};
 use tracing::{error, info, level_filters::LevelFilter, warn, Level};
 use tracing_subscriber::EnvFilter;
 use url::Url;
@@ -58,14 +58,27 @@ async fn main() -> anyhow::Result<()> {
     migrate!().run(&db).await?;
 
     match args.command {
-        Command::Search { query } => {
-            info!("Parsing query: {query}");
+        Command::Search { destination, query } => {
+            let works = search(&db, &query).await?;
 
-            let parsed = Query::parse(&query)?;
+            println!("Found {} matches.", works.len());
 
-            parsed.print_query_tree();
+            for work in &works {
+                println!("{} {} {:?}", work.work_id, work.path, work.url,);
+            }
 
-            println!("Hash: {}", hash_t_hex(&parsed));
+            if !works.is_empty() {
+                if let Some(destination) = destination {
+                    fs::create_dir_all(&destination)?;
+
+                    for work in &works {
+                        fs::copy(
+                            CONFIG.data_path.join(&work.path),
+                            destination.join(&work.path),
+                        )?;
+                    }
+                }
+            }
         }
         Command::Import {
             link,
