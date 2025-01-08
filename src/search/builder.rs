@@ -84,7 +84,7 @@ impl<'args> SearchQueryBuilder<'args> {
                 let child = self.push_query_table(query);
 
                 self.query_builder
-                    .push(format_args!("CREATE TEMP TABLE {table_name} AS SELECT work_id FROM everything WHERE NOT EXISTS (SELECT work_id FROM {child} WHERE {table_name}.work_id = {child}.work_id);\n"));
+                    .push(format_args!("CREATE TEMP TABLE {table_name} AS SELECT everything.work_id FROM everything LEFT OUTER JOIN {child} ON everything.work_id = {child}.work_id WHERE {child}.work_id IS null;\n"));
             }
             Query::And(terms) => {
                 let mut children: Vec<String> = terms

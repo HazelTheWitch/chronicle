@@ -41,6 +41,7 @@ pub enum Command {
         destination: Option<PathBuf>,
         query: String,
     },
+    List,
     Add {
         /// The path of the work.
         path: PathBuf,

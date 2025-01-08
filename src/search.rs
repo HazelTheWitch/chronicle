@@ -196,6 +196,10 @@ pub async fn search(db: &sqlx::SqlitePool, search_query: &str) -> anyhow::Result
     Ok(built.fetch_all(db).await?)
 }
 
+pub async fn list(db: &sqlx::SqlitePool) -> anyhow::Result<Vec<Work>> {
+    Ok(sqlx::query_as("SELECT * FROM works;").fetch_all(db).await?)
+}
+
 #[cfg(test)]
 mod tests {
     use crate::utils::hash_t;

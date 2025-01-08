@@ -8,7 +8,7 @@ use anyhow::bail;
 use chronicle::{
     import::{import, import_from_link, work_present_with_link},
     record::Record,
-    search::{builder::SearchQueryBuilder, search, Query},
+    search::{builder::SearchQueryBuilder, list, search, Query},
     tag::tag_tag,
     utils::hash_t_hex,
     Arguments, Command, ServiceCredentials, WorkDetails, BSKY_IDENTIFIER, BSKY_PASSWORD, CONFIG,
@@ -58,6 +58,23 @@ async fn main() -> anyhow::Result<()> {
     migrate!().run(&db).await?;
 
     match args.command {
+        Command::List => {
+            let works = list(&db).await?;
+
+            for work in works {
+                println!("{} ({})", work.path, work.work_id);
+                println!(
+                    "Title: {}",
+                    work.title.unwrap_or_else(|| String::from("NONE"))
+                );
+                println!(
+                    "Caption: {}",
+                    work.caption.unwrap_or_else(|| String::from("NONE"))
+                );
+                println!("Url: {}", work.url.unwrap_or_else(|| String::from("NONE")));
+                println!();
+            }
+        }
         Command::Search { destination, query } => {
             let works = search(&db, &query).await?;
 
