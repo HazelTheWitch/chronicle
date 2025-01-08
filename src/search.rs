@@ -1,10 +1,14 @@
 use std::{
     fmt::Display,
+    hash::{Hash, Hasher},
     iter::{repeat_n, repeat_with},
 };
 
 use sqlx::query;
 
+use crate::utils::hash_t;
+
+mod builder;
 mod parse;
 
 #[derive(PartialEq, Eq, Debug)]
@@ -28,12 +32,40 @@ impl Display for QueryTerm {
     }
 }
 
+fn hash_and(state: &mut impl Hasher, number: u8, value: impl Hash) {
+    state.write_u8(number);
+    value.hash(state);
+}
+
+impl Hash for QueryTerm {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        match self {
+            QueryTerm::Tag(text) => hash_and(state, 1, text),
+            QueryTerm::Title(text) => hash_and(state, 2, text),
+            QueryTerm::Artist(text) => hash_and(state, 3, text),
+            QueryTerm::Caption(text) => hash_and(state, 4, text),
+            QueryTerm::Url(text) => hash_and(state, 5, text),
+        }
+    }
+}
+
 #[derive(PartialEq, Eq, Debug)]
 pub enum Query {
     Term(QueryTerm),
     Not(Box<Query>),
     And(Vec<Query>),
     Or(Vec<Query>),
+}
+
+impl Hash for Query {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        match self {
+            Query::Term(query_term) => hash_and(state, 1, query_term),
+            Query::Not(query) => hash_and(state, 2, query),
+            Query::And(terms) => hash_and(state, 3, terms),
+            Query::Or(terms) => hash_and(state, 4, terms),
+        }
+    }
 }
 
 #[derive(PartialEq, Eq, Debug)]
@@ -45,14 +77,42 @@ pub enum Operation {
 impl Query {
     pub fn parse(query: &str) -> anyhow::Result<Self> {
         let lower_query = query.to_lowercase();
-        let (left, mut result) = parse::query(&lower_query)
+        let (left, result) = parse::query(&lower_query)
             .map_err(|err| anyhow::anyhow!("Error parsing query: {err}"))?;
 
         if !left.is_empty() {
             anyhow::bail!("Query has invalid syntax, could not parse: {left}");
         }
 
-        Ok(result)
+        Ok(result.into_normalized())
+    }
+
+    pub fn into_normalized(self) -> Self {
+        match self {
+            Query::And(mut terms) => {
+                terms = terms.into_iter().map(Self::into_normalized).collect();
+                terms.sort_by_key(hash_t);
+                terms.dedup_by_key(|term| hash_t(term));
+
+                if terms.len() == 1 {
+                    return terms.remove(0);
+                }
+
+                Query::And(terms)
+            }
+            Query::Or(mut terms) => {
+                terms = terms.into_iter().map(Self::into_normalized).collect();
+                terms.sort_by_key(hash_t);
+                terms.dedup_by_key(|term| hash_t(term));
+
+                if terms.len() == 1 {
+                    return terms.remove(0);
+                }
+
+                Query::Or(terms)
+            }
+            query => query,
+        }
     }
 
     pub fn print_query_tree(&self) {
@@ -86,7 +146,7 @@ impl Query {
         }
     }
 
-    pub fn or(queries: Vec<Self>) -> Self {
+    fn or(queries: Vec<Self>) -> Self {
         assert!(!queries.is_empty());
 
         if queries.len() == 1 {
@@ -96,7 +156,7 @@ impl Query {
         Self::Or(queries)
     }
 
-    pub fn and(queries: Vec<Self>) -> Self {
+    fn and(queries: Vec<Self>) -> Self {
         assert!(!queries.is_empty());
 
         if queries.len() == 1 {
@@ -108,3 +168,38 @@ impl Query {
 }
 
 pub async fn search(search_query: &str) {}
+
+#[cfg(test)]
+mod tests {
+    use crate::utils::hash_t;
+
+    use super::Query;
+
+    #[test]
+    fn test_normalization() {
+        let query1 = Query::parse("a b c").unwrap();
+        let query2 = Query::parse("a c b").unwrap();
+        let query3 = Query::parse("c b a").unwrap();
+
+        assert_eq!(hash_t(&query1), hash_t(&query2));
+        assert_eq!(hash_t(&query1), hash_t(&query3));
+    }
+
+    #[test]
+    fn test_deep_normalization() {
+        let query1 = Query::parse("(a or b) and (c or d) and not e").unwrap();
+        let query2 = Query::parse("(d or c) and not e (a or b)").unwrap();
+
+        assert_eq!(hash_t(&query1), hash_t(&query2));
+    }
+
+    #[test]
+    fn test_repetitive_normalization() {
+        let query1 = Query::parse("a").unwrap();
+        let query2 = Query::parse("a a a a a").unwrap();
+        let query3 = Query::parse("a:a").unwrap();
+
+        assert_eq!(hash_t(&query1), hash_t(&query2));
+        assert_ne!(hash_t(&query1), hash_t(&query3));
+    }
+}

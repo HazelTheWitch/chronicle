@@ -2,6 +2,7 @@ pub mod import;
 pub mod record;
 pub mod search;
 pub mod tag;
+pub mod utils;
 
 use std::{fs, path::PathBuf};
 

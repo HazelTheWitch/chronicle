@@ -10,6 +10,7 @@ use chronicle::{
     record::Record,
     search::Query,
     tag::tag_tag,
+    utils::hash_t_hex,
     Arguments, Command, ServiceCredentials, WorkDetails, BSKY_IDENTIFIER, BSKY_PASSWORD, CONFIG,
     PROJECT_DIRS, SERVICE_NAME,
 };
@@ -63,6 +64,8 @@ async fn main() -> anyhow::Result<()> {
             let parsed = Query::parse(&query)?;
 
             parsed.print_query_tree();
+
+            println!("Hash: {}", hash_t_hex(&parsed));
         }
         Command::Import {
             link,
