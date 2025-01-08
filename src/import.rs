@@ -3,7 +3,7 @@ pub mod bsky;
 use anyhow::bail;
 use bsky::import_from_bsky;
 
-use crate::{record::Record, WorkDetails};
+use crate::{record::Record, tag::tag_work, WorkDetails};
 
 pub async fn import_from_link(
     db: &sqlx::SqlitePool,
@@ -23,6 +23,17 @@ pub async fn import_from_link(
     }
 
     Ok(())
+}
+
+pub async fn work_present_with_link(
+    db: &sqlx::SqlitePool,
+    link: &str,
+) -> Result<bool, sqlx::Error> {
+    Ok(sqlx::query(r#"SELECT 1 FROM works WHERE url = ? LIMIT 1;"#)
+        .bind(link)
+        .fetch_optional(db)
+        .await?
+        .is_some())
 }
 
 pub async fn import(db: &sqlx::SqlitePool, record: Record) -> Result<(), sqlx::Error> {
@@ -56,22 +67,7 @@ pub async fn import(db: &sqlx::SqlitePool, record: Record) -> Result<(), sqlx::E
         .fetch_one(db)
         .await?;
 
-    if details.tags.is_empty() {
-        tx.commit().await?;
-        return Ok(());
-    }
-
-    for tag in details.tags {
-        sqlx::query(r#"
-                INSERT OR IGNORE INTO tags(name) VALUES (?);
-                INSERT INTO work_tags(tag, work_id) VALUES ((SELECT id FROM tags WHERE name = ?), ?);
-            "#)
-            .bind(&tag)
-            .bind(&tag)
-            .bind(&work_id.0)
-            .execute(db)
-            .await?;
-    }
+    tag_work(db, work_id.0, details.tags).await?;
 
     tx.commit().await?;
 

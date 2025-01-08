@@ -1,5 +1,6 @@
 pub mod import;
 pub mod record;
+pub mod search;
 pub mod tag;
 
 use std::{fs, path::PathBuf};
@@ -49,6 +50,9 @@ pub enum Command {
     Import {
         /// The link to the work.
         link: String,
+        /// Skip duplicate check.
+        #[arg(short, long)]
+        force: bool,
         #[command(flatten)]
         details: WorkDetails,
     },
@@ -57,6 +61,11 @@ pub enum Command {
         service: ServiceCredentials,
     },
     WriteConfig,
+    Tag {
+        #[arg(short, long)]
+        targets: Vec<String>,
+        tags: Vec<String>,
+    },
 }
 
 #[derive(Subcommand)]

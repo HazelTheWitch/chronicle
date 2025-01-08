@@ -1,10 +1,27 @@
-use std::path::PathBuf;
+use std::{
+    fs,
+    io::{self, BufReader},
+    path::PathBuf,
+};
 
-use crate::WorkDetails;
+use crate::{WorkDetails, CONFIG};
 
 pub struct Record {
     pub path: PathBuf,
+    pub hash: u32,
     pub details: WorkDetails,
+}
+
+impl Record {
+    pub fn from_path(path: PathBuf, details: WorkDetails) -> Result<Self, io::Error> {
+        let hash = crc32fast::hash(&fs::read(&CONFIG.data_path.join(&path))?);
+
+        Ok(Self {
+            path,
+            hash,
+            details,
+        })
+    }
 }
 
 impl WorkDetails {

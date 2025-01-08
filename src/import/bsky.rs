@@ -8,6 +8,7 @@ use anyhow::bail;
 use atrium_api::{
     agent::{store::MemorySessionStore, AtpAgent},
     types::{TryFromUnknown, Unknown},
+    xrpc::http::request,
 };
 use atrium_xrpc_client::reqwest::ReqwestClient;
 use lazy_static::lazy_static;
@@ -96,10 +97,13 @@ pub async fn import_from_bsky(url: &str) -> Result<Vec<Record>, anyhow::Error> {
 
             let request = reqwest::get(&image_url).await?;
 
-            writer.write_all(&request.bytes().await?)?;
+            let data = request.bytes().await?;
+
+            writer.write_all(&data)?;
 
             records.push(Record {
                 path: PathBuf::from(file_name),
+                hash: crc32fast::hash(&data),
                 details: work_details.clone(),
             });
         }

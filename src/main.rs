@@ -6,14 +6,16 @@ use std::{
 
 use anyhow::bail;
 use chronicle::{
-    import::{import, import_from_link},
+    import::{import, import_from_link, work_present_with_link},
     record::Record,
+    search::Query,
+    tag::tag_tag,
     Arguments, Command, ServiceCredentials, WorkDetails, BSKY_IDENTIFIER, BSKY_PASSWORD, CONFIG,
     PROJECT_DIRS, SERVICE_NAME,
 };
 use clap::Parser;
 use sqlx::{migrate, SqlitePool};
-use tracing::{info, level_filters::LevelFilter, warn, Level};
+use tracing::{error, info, level_filters::LevelFilter, warn, Level};
 use tracing_subscriber::EnvFilter;
 use url::Url;
 use uuid::Uuid;
@@ -55,27 +57,35 @@ async fn main() -> anyhow::Result<()> {
     migrate!().run(&db).await?;
 
     match args.command {
-        Command::Search { query } => todo!(),
-        Command::Import { link, details } => {
+        Command::Search { query } => {
+            info!("Parsing query: {query}");
+
+            let parsed = Query::parse(&query)?;
+
+            parsed.print_query_tree();
+        }
+        Command::Import {
+            link,
+            force,
+            details,
+        } => {
+            if !force && work_present_with_link(&db, &link).await? {
+                warn!("A work has already been chronicled with this url, if you want to repeat this operation pass --force");
+                return Ok(());
+            }
+
             import_from_link(&db, &link, details).await?;
         }
         Command::Add {
             path,
             copy,
-            details:
-                WorkDetails {
-                    tags,
-                    title,
-                    author,
-                    url,
-                    caption,
-                },
+            details,
         } => {
             if !fs::metadata(&path)?.is_file() {
                 bail!("Provided path is not a file.");
             }
 
-            if let Some(url) = &url {
+            if let Some(url) = &details.url {
                 if Url::parse(url).is_err() {
                     warn!("Provided url is invalid: {url}");
                 }
@@ -104,20 +114,7 @@ async fn main() -> anyhow::Result<()> {
                 path.strip_prefix(&CONFIG.data_path)?
             };
 
-            import(
-                &db,
-                Record {
-                    path: relative_path.to_owned(),
-                    details: WorkDetails {
-                        tags,
-                        title,
-                        author,
-                        url,
-                        caption,
-                    },
-                },
-            )
-            .await?;
+            import(&db, Record::from_path(relative_path.to_owned(), details)?).await?;
         }
         Command::WriteConfig => {
             let config_path = PROJECT_DIRS.config_dir().join("config.toml");
@@ -138,6 +135,13 @@ async fn main() -> anyhow::Result<()> {
                 identifier_entry.set_password(&identifier)?;
             }
         },
+        Command::Tag { targets, tags } => {
+            for target in targets {
+                if let Err(err) = tag_tag(&db, &target, &tags).await {
+                    error!("Failed to tag: {target}: {err}");
+                }
+            }
+        }
     }
 
     Ok(())
