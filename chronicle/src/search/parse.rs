@@ -114,12 +114,12 @@ fn and_sequence(input: &str) -> IResult<&str, Query, nom::error::VerboseError<&s
             alt((and_separator, space1)),
             preceded(nom::combinator::not(or_separator), term_query),
         ),
-        Query::and,
+        Query::new_and,
     )(input)
 }
 
 fn or_sequence(input: &str) -> IResult<&str, Query, nom::error::VerboseError<&str>> {
-    map(separated_list1(or_separator, and_sequence), Query::or)(input)
+    map(separated_list1(or_separator, and_sequence), Query::new_or)(input)
 }
 
 pub fn query(input: &str) -> IResult<&str, Query, nom::error::VerboseError<&str>> {

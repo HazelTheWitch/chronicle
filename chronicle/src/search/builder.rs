@@ -1,7 +1,5 @@
 use sqlx::{QueryBuilder, Sqlite};
 
-use crate::utils::{hash_t, hash_t_hex};
-
 use super::{Query, QueryTerm};
 
 impl QueryTerm {

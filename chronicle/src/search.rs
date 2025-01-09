@@ -1,16 +1,25 @@
 use std::{
     fmt::Display,
     hash::{Hash, Hasher},
-    iter::{repeat_n, repeat_with},
+    io::{self, stdout, Write},
+    iter::{once, repeat_n},
 };
 
 use builder::SearchQueryBuilder;
-use sqlx::{query, Execute};
+use thiserror::Error;
 
-use crate::{utils::hash_t, Work};
+use crate::{models::Work, utils::hash_t, Chronicle};
 
 pub mod builder;
 mod parse;
+
+#[derive(Debug, Error)]
+pub enum SearchError {
+    #[error("could not parse: {0}")]
+    Parse(String),
+    #[error("parser did not finish: '{0}'")]
+    ParserDidNotFinish(String),
+}
 
 #[derive(PartialEq, Eq, Debug)]
 pub enum QueryTerm {
@@ -82,19 +91,21 @@ pub enum Operation {
 }
 
 impl Query {
-    pub fn parse(query: &str) -> anyhow::Result<Self> {
+    pub fn parse(query: &str) -> Result<Self, crate::Error> {
         let lower_query = query.to_lowercase();
-        let (left, result) = parse::query(&lower_query)
-            .map_err(|err| anyhow::anyhow!("Error parsing query: {err}"))?;
+        let (left, result) =
+            parse::query(&lower_query).map_err(|err| SearchError::Parse(err.to_string()))?;
 
         if !left.is_empty() {
-            anyhow::bail!("Query has invalid syntax, could not parse: {left}");
+            return Err(crate::Error::Search(SearchError::ParserDidNotFinish(
+                left.to_string(),
+            )));
         }
 
         Ok(result.into_normalized())
     }
 
-    pub fn table_name(&self) -> String {
+    fn table_name(&self) -> String {
         format!("t{hash:X}", hash = hash_t(self))
     }
 
@@ -127,37 +138,81 @@ impl Query {
     }
 
     pub fn print_query_tree(&self) {
-        self._print_query_tree(0);
+        self.write_query_tree(&mut stdout())
+            .expect("could not write to stdout");
     }
 
-    fn _print_query_tree(&self, indentation: usize) {
-        let indent: String = repeat_n(" ", indentation).collect();
+    pub fn write_query_tree(&self, writer: &mut impl Write) -> io::Result<()> {
+        self._write_query_tree(0, 0, writer)
+    }
 
+    pub fn not(self) -> Self {
+        Query::Not(Box::new(self))
+    }
+
+    pub fn and(self, other: impl IntoIterator<Item = Self>) -> Self {
+        Self::And(once(self).chain(other.into_iter()).collect())
+    }
+
+    pub fn or(self, other: impl IntoIterator<Item = Self>) -> Self {
+        Self::Or(once(self).chain(other.into_iter()).collect())
+    }
+
+    pub fn operation_count(&self) -> usize {
         match self {
-            Query::Term(query_term) => println!("{indent}{query_term}"),
-            Query::Not(query) => {
-                println!("{indent}NOT (");
-                query._print_query_tree(indentation + 2);
-                println!("{indent})");
+            Query::Term(_) => 1,
+            Query::Not(query) => 1 + query.operation_count(),
+            Query::And(terms) => {
+                1 + terms
+                    .iter()
+                    .map(|term| term.operation_count())
+                    .sum::<usize>()
             }
-            Query::And(queries) => {
-                println!("{indent}AND (");
-                for query in queries {
-                    query._print_query_tree(indentation + 2);
-                }
-                println!("{indent})");
-            }
-            Query::Or(queries) => {
-                println!("{indent}OR (");
-                for query in queries {
-                    query._print_query_tree(indentation + 2);
-                }
-                println!("{indent})");
+            Query::Or(terms) => {
+                1 + terms
+                    .iter()
+                    .map(|term| term.operation_count())
+                    .sum::<usize>()
             }
         }
     }
 
-    fn or(queries: Vec<Self>) -> Self {
+    fn _write_query_tree(
+        &self,
+        indentation: usize,
+        negations: usize,
+        writer: &mut impl Write,
+    ) -> io::Result<()> {
+        let indent: String = repeat_n(" ", indentation - negations).collect();
+        let negate: String = repeat_n("-", negations).collect();
+
+        match self {
+            Query::Term(query_term) => {
+                writeln!(writer, "{indent}{negate}{query_term}")?;
+            }
+            Query::Not(query) => {
+                query._write_query_tree(indentation, negations + 1, writer)?;
+            }
+            Query::And(queries) => {
+                writeln!(writer, "{indent}{negate}AND (")?;
+                for query in queries {
+                    query._write_query_tree(indentation + 2, 0, writer)?;
+                }
+                writeln!(writer, "{indent}{negate})")?;
+            }
+            Query::Or(queries) => {
+                writeln!(writer, "{indent}{negate}OR (")?;
+                for query in queries {
+                    query._write_query_tree(indentation + 2, 0, writer)?;
+                }
+                writeln!(writer, "{indent}{negate})")?;
+            }
+        }
+
+        Ok(())
+    }
+
+    fn new_or(queries: Vec<Self>) -> Self {
         assert!(!queries.is_empty());
 
         if queries.len() == 1 {
@@ -167,7 +222,7 @@ impl Query {
         Self::Or(queries)
     }
 
-    fn and(queries: Vec<Self>) -> Self {
+    fn new_and(queries: Vec<Self>) -> Self {
         assert!(!queries.is_empty());
 
         if queries.len() == 1 {
@@ -178,26 +233,37 @@ impl Query {
     }
 }
 
-pub async fn search(db: &sqlx::SqlitePool, search_query: &str) -> anyhow::Result<Vec<Work>> {
-    let query = Query::parse(search_query)?;
+impl Work {
+    pub async fn get_all(chronicle: &Chronicle) -> Result<Vec<Work>, crate::Error> {
+        Ok(sqlx::query_as("SELECT * FROM works;")
+            .fetch_all(&chronicle.pool)
+            .await?)
+    }
 
-    let mut builder = SearchQueryBuilder::new();
+    pub async fn search(chronicle: &Chronicle, query: &Query) -> Result<Vec<Work>, crate::Error> {
+        let mut builder = SearchQueryBuilder::new();
 
-    let table = builder.push_query_table(&query);
+        let table = builder.push_query_table(query);
 
-    builder.query_builder.push(format_args!(
-        "SELECT * FROM works WHERE work_id IN (SELECT work_id FROM {table});\n"
-    ));
+        builder.query_builder.push(format_args!(
+            "SELECT * FROM works WHERE work_id IN (SELECT work_id FROM {table});"
+        ));
 
-    builder.drop_tables();
+        builder.drop_tables();
 
-    let built = builder.query_builder.build_query_as();
+        let built = builder.query_builder.build_query_as();
 
-    Ok(built.fetch_all(db).await?)
-}
+        Ok(built.fetch_all(&chronicle.pool).await?)
+    }
 
-pub async fn list(db: &sqlx::SqlitePool) -> anyhow::Result<Vec<Work>> {
-    Ok(sqlx::query_as("SELECT * FROM works;").fetch_all(db).await?)
+    pub async fn search_by_str(
+        chronicle: &Chronicle,
+        search_query: &str,
+    ) -> Result<Vec<Work>, crate::Error> {
+        let query = Query::parse(search_query)?;
+
+        Self::search(chronicle, &query).await
+    }
 }
 
 #[cfg(test)]
