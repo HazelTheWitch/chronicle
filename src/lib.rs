@@ -1,3 +1,4 @@
+pub mod author;
 pub mod import;
 pub mod record;
 pub mod search;

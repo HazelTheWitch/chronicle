@@ -2,8 +2,9 @@ pub mod bsky;
 
 use anyhow::bail;
 use bsky::import_from_bsky;
+use tracing::info;
 
-use crate::{record::Record, tag::tag_work, WorkDetails};
+use crate::{author::get_matching_author_ids, record::Record, tag::tag_work, WorkDetails};
 
 pub async fn import_from_link(
     db: &sqlx::SqlitePool,
@@ -36,24 +37,30 @@ pub async fn work_present_with_link(
         .is_some())
 }
 
-pub async fn import(db: &sqlx::SqlitePool, record: Record) -> Result<(), sqlx::Error> {
+pub async fn import(db: &sqlx::SqlitePool, record: Record) -> anyhow::Result<()> {
     let tx = db.begin().await?;
 
     let details = record.details;
 
-    let author_id: Option<i32> = if let Some(author) = &details.author {
-        let result: (i32,) = sqlx::query_as(
-            r#"
-                INSERT OR IGNORE INTO authors(name) VALUES (?);
-                SELECT author_id FROM authors WHERE name = ?;
-            "#,
-        )
-        .bind(&author)
-        .bind(&author)
-        .fetch_one(db)
-        .await?;
+    let author_id = if let Some(author) = &details.author {
+        let mut all_author_ids = get_matching_author_ids(&db, &author).await?;
 
-        Some(result.0)
+        if all_author_ids.is_empty() {
+            let author_id: (i32,) =
+                sqlx::query_as("INSERT INTO authors DEFAULT VALUES RETURNING author_id;")
+                    .fetch_one(db)
+                    .await?;
+            sqlx::query("INSERT INTO author_names (author_id, name) VALUES (?, ?);")
+                .bind(&author_id.0)
+                .bind(&author)
+                .execute(db)
+                .await?;
+            Some(author_id.0)
+        } else if all_author_ids.len() == 1 {
+            Some(all_author_ids.remove(0))
+        } else {
+            bail!("multiple authors use this name");
+        }
     } else {
         None
     };
