@@ -13,12 +13,12 @@ use models::ModelKind;
 use record::Record;
 use search::SearchError;
 use serde::{Deserialize, Serialize};
-use sqlx::SqlitePool;
-use tracing::error;
+use sqlx::{migrate::MigrateError, SqlitePool};
+use tracing::{debug, error, info};
 
 pub const DEFAULT_CONFIG: &str = include_str!("../../default_config.toml");
 
-#[derive(Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct Config {
     pub database_path: PathBuf,
     pub data_path: PathBuf,
@@ -26,8 +26,16 @@ pub struct Config {
 
 impl Config {
     pub fn expand_paths(&mut self) -> Result<(), Error> {
-        self.data_path.canonicalize()?;
-        self.database_path.canonicalize()?;
+        self.data_path = PathBuf::from(
+            shellexpand::full(&self.data_path.to_string_lossy())
+                .map_err(|_| Error::Expansion(self.data_path.to_string_lossy().to_string()))?
+                .to_string(),
+        );
+        self.database_path = PathBuf::from(
+            shellexpand::full(&self.database_path.to_string_lossy())
+                .map_err(|_| Error::Expansion(self.database_path.to_string_lossy().to_string()))?
+                .to_string(),
+        );
 
         Ok(())
     }
@@ -43,11 +51,15 @@ impl Chronicle {
     pub async fn from_path(config_path: impl Into<PathBuf>) -> Result<Self, Error> {
         let path = config_path.into();
 
+        info!("Loading config from {path:?}");
+
         let text = fs::read_to_string(&path)?;
 
         let mut config: Config = toml::from_str(&text)?;
 
         config.expand_paths()?;
+
+        debug!("Loaded config: {config:?}");
 
         let database_url = format!(
             "sqlite:///{path}",
@@ -55,6 +67,8 @@ impl Chronicle {
         );
 
         let pool = SqlitePool::connect(&database_url).await?;
+
+        sqlx::migrate!().run(&pool).await?;
 
         Ok(Chronicle {
             pool,
@@ -108,17 +122,21 @@ pub enum Error {
     Ambiguous { kind: ModelKind, identifier: String },
     #[error(transparent)]
     Search(#[from] SearchError),
+    #[error(transparent)]
+    Migration(#[from] MigrateError),
+    #[error("could not expand {0}")]
+    Expansion(String),
 }
 
 #[derive(Debug, thiserror::Error)]
 pub enum ServiceError {
     #[error("error communicating with bsky")]
-    Bsky(Box<dyn std::error::Error>),
+    Bsky(Box<dyn std::error::Error + Send + Sync>),
 }
 
 impl<E> From<atrium_api::xrpc::Error<E>> for ServiceError
 where
-    E: std::fmt::Debug + std::fmt::Display + 'static,
+    E: std::fmt::Debug + std::fmt::Display + Send + Sync + 'static,
 {
     fn from(value: atrium_api::xrpc::Error<E>) -> Self {
         Self::Bsky(Box::new(value))

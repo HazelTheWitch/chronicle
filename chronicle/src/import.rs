@@ -26,6 +26,14 @@ pub trait Service {
     ) -> Result<(), crate::Error>;
     fn secrets(&self) -> &[&str];
 
+    fn write_secret(&self, key: &str, secret: &str) -> Result<(), keyring::Error> {
+        let entry = keyring::Entry::new(SERVICE_NAME, key)?;
+
+        entry.set_password(secret)?;
+
+        Ok(())
+    }
+
     fn has_secrets(&self, secrets: &HashMap<String, String>) -> bool {
         for secret in self.secrets() {
             if !secrets.contains_key(*secret) {
@@ -42,7 +50,7 @@ pub trait Service {
 }
 
 pub struct Services {
-    services: Vec<Box<dyn Service + Send + Sync + 'static>>,
+    pub services: Vec<Box<dyn Service + Send + Sync + 'static>>,
     secrets: Arc<RwLock<HashMap<String, String>>>,
 }
 
@@ -57,17 +65,6 @@ fn get_services() -> Services {
         services,
         secrets: Default::default(),
     }
-}
-
-pub async fn work_present_with_link(
-    db: &sqlx::SqlitePool,
-    link: &str,
-) -> Result<bool, sqlx::Error> {
-    Ok(sqlx::query(r#"SELECT 1 FROM works WHERE url = ? LIMIT 1;"#)
-        .bind(link)
-        .fetch_optional(db)
-        .await?
-        .is_some())
 }
 
 impl Work {

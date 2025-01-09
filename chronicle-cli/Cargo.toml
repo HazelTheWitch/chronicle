@@ -9,6 +9,12 @@ path = "src/main.rs"
 
 [dependencies]
 chronicle = { path = "../chronicle" }
-clap = { version = "4.5.24", features = ["derive"] }
+clap = { version = "4.5.24", features = ["derive", "env", "string"] }
 tokio = { version = "1.43.0", features = ["full"] }
 lazy_static = "1.5.0"
+anyhow = "1.0.95"
+tracing = "0.1.41"
+tracing-subscriber = { version = "0.3.19" }
+url = "2.5.4"
+uuid = "1.11.0"
+directories = "5.0.1"

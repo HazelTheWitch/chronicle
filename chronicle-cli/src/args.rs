@@ -1,6 +1,21 @@
+use std::path::PathBuf;
+
+use chronicle::record::RecordDetails;
+use clap::{Args, Parser, Subcommand};
+use directories::ProjectDirs;
+use lazy_static::lazy_static;
+use tracing::Level;
+use url::Url;
+
+use crate::PROJECT_DIRS;
+
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
 pub struct Arguments {
+    #[arg(short, long, env = "CHRONICLE_LOG", default_value_t = Level::INFO)]
+    pub log_level: Level,
+    #[arg(short, long, default_value = PROJECT_DIRS.config_dir().join("config.toml").into_os_string())]
+    pub config: PathBuf,
     #[command(subcommand)]
     pub command: Command,
 }
@@ -31,9 +46,9 @@ pub enum Command {
         #[command(flatten)]
         details: WorkDetails,
     },
-    Login {
+    Service {
         #[command(subcommand)]
-        service: ServiceCredentials,
+        command: ServiceCommand,
     },
     WriteConfig,
     Tag {
@@ -44,11 +59,9 @@ pub enum Command {
 }
 
 #[derive(Subcommand)]
-pub enum ServiceCredentials {
-    Bsky {
-        identifier: String,
-        password: String,
-    },
+pub enum ServiceCommand {
+    Login { service: String },
+    List,
 }
 
 #[derive(Default, Clone, Args)]
@@ -63,8 +76,28 @@ pub struct WorkDetails {
     pub author: Option<String>,
     /// The url to associate with the work.
     #[arg(short, long)]
-    pub url: Option<String>,
+    pub url: Option<Url>,
     /// The caption associated with the work.
     #[arg(long)]
     pub caption: Option<String>,
+}
+
+impl From<WorkDetails> for RecordDetails {
+    fn from(
+        WorkDetails {
+            tags,
+            title,
+            author,
+            url,
+            caption,
+        }: WorkDetails,
+    ) -> Self {
+        Self {
+            tags,
+            title,
+            author,
+            url,
+            caption,
+        }
+    }
 }

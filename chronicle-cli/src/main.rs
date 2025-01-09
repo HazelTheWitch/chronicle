@@ -1,65 +1,80 @@
+mod args;
+
 use std::{
     fs::{self, OpenOptions},
+    io::stdin,
     path::PathBuf,
-    sync::Condvar,
 };
 
 use anyhow::bail;
+use args::{Arguments, Command, ServiceCommand};
 use chronicle::{
-    import::{import, import_from_link, work_present_with_link},
+    import::SERVICES,
+    models::{Author, Tag, Work},
     record::Record,
-    search::{builder::SearchQueryBuilder, list, search, Query},
-    tag::tag_tag,
-    utils::hash_t_hex,
-    Arguments, Command, ServiceCredentials, WorkDetails, BSKY_IDENTIFIER, BSKY_PASSWORD, CONFIG,
-    PROJECT_DIRS, SERVICE_NAME,
+    search::QueryTerm,
+    Chronicle, Config,
 };
 use clap::Parser;
-use sqlx::{migrate, query, Execute, SqlitePool};
-use tracing::{error, info, level_filters::LevelFilter, warn, Level};
-use tracing_subscriber::EnvFilter;
+use directories::ProjectDirs;
+use lazy_static::lazy_static;
+use tokio::sync::OnceCell;
+use tracing::{error, info, warn};
 use url::Url;
 use uuid::Uuid;
+
+lazy_static! {
+    pub static ref ARGUMENTS: Arguments = Arguments::parse();
+    pub static ref PROJECT_DIRS: ProjectDirs =
+        ProjectDirs::from("dev.setaria", "HazelTheWitch", "chronicle-cli")
+            .expect("could not get project directories");
+}
+
+static CHRONICLE: OnceCell<Chronicle> = OnceCell::const_new();
+
+pub async fn get_chronicle() -> &'static Chronicle {
+    CHRONICLE
+        .get_or_init(|| async {
+            Chronicle::from_path(ARGUMENTS.config.clone())
+                .await
+                .expect("could not load config file")
+        })
+        .await
+}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::builder()
-                .with_default_directive(LevelFilter::from_level(Level::INFO).into())
-                .from_env()?,
-        )
+        .with_max_level(ARGUMENTS.log_level)
         .init();
 
-    let args = Arguments::parse();
+    if matches!(ARGUMENTS.command, Command::WriteConfig) {
+        fs::write(&ARGUMENTS.config, chronicle::DEFAULT_CONFIG)?;
+        return Ok(());
+    }
 
-    if !fs::exists(&CONFIG.database_path)? {
-        if let Some(directory) = CONFIG.database_path.parent() {
+    let chronicle = get_chronicle().await;
+
+    if !fs::exists(&chronicle.config.database_path)? {
+        if let Some(directory) = chronicle.config.database_path.parent() {
             fs::create_dir_all(directory)?;
         }
 
         OpenOptions::new()
             .create(true)
             .write(true)
-            .open(&CONFIG.database_path)?;
+            .open(&chronicle.config.database_path)?;
     }
 
-    if !fs::exists(&CONFIG.data_path)? {
-        fs::create_dir_all(&CONFIG.data_path)?;
+    if !fs::exists(&chronicle.config.data_path)? {
+        fs::create_dir_all(&chronicle.config.data_path)?;
     }
 
-    let database_url = format!(
-        "sqlite:///{path}",
-        path = CONFIG.database_path.to_string_lossy()
-    );
+    let tx = chronicle.pool.begin().await?;
 
-    let db = SqlitePool::connect(&database_url).await?;
-
-    migrate!().run(&db).await?;
-
-    match args.command {
+    match &ARGUMENTS.command {
         Command::List => {
-            let works = list(&db).await?;
+            let works = Work::get_all(&chronicle).await?;
 
             for work in works {
                 println!("{} ({})", work.path, work.work_id);
@@ -76,7 +91,7 @@ async fn main() -> anyhow::Result<()> {
             }
         }
         Command::Search { destination, query } => {
-            let works = search(&db, &query).await?;
+            let works = Work::search_by_str(&chronicle, &query).await?;
 
             println!("Found {} matches.", works.len());
 
@@ -90,7 +105,7 @@ async fn main() -> anyhow::Result<()> {
 
                     for work in &works {
                         fs::copy(
-                            CONFIG.data_path.join(&work.path),
+                            chronicle.config.data_path.join(&work.path),
                             destination.join(&work.path),
                         )?;
                     }
@@ -102,12 +117,18 @@ async fn main() -> anyhow::Result<()> {
             force,
             details,
         } => {
-            if !force && work_present_with_link(&db, &link).await? {
+            if !force
+                && Work::search(&chronicle, &QueryTerm::Url(link.clone()).into())
+                    .await?
+                    .len()
+                    > 0
+            {
                 warn!("A work has already been chronicled with this url, if you want to repeat this operation pass --force");
                 return Ok(());
             }
 
-            import_from_link(&db, &link, details).await?;
+            Work::import_works_from_url(&chronicle, &link, Some(details.clone().into()), None)
+                .await?;
         }
         Command::Add {
             path,
@@ -118,14 +139,8 @@ async fn main() -> anyhow::Result<()> {
                 bail!("Provided path is not a file.");
             }
 
-            if let Some(url) = &details.url {
-                if Url::parse(url).is_err() {
-                    warn!("Provided url is invalid: {url}");
-                }
-            }
-
-            let relative_path = if copy {
-                match path.strip_prefix(&CONFIG.data_path) {
+            let relative_path = if *copy {
+                match path.strip_prefix(&chronicle.config.data_path) {
                     Ok(relative_path) => relative_path,
                     Err(_) => {
                         let file_name = if let Some(extension) = path.extension() {
@@ -134,7 +149,7 @@ async fn main() -> anyhow::Result<()> {
                             Uuid::new_v4().to_string()
                         };
 
-                        let new_path = CONFIG.data_path.join(&file_name);
+                        let new_path = chronicle.config.data_path.join(&file_name);
 
                         fs::copy(&path, &new_path)?;
 
@@ -144,38 +159,71 @@ async fn main() -> anyhow::Result<()> {
                     }
                 }
             } else {
-                path.strip_prefix(&CONFIG.data_path)?
+                path.strip_prefix(&chronicle.config.data_path)?
             };
 
-            import(&db, Record::from_path(relative_path.to_owned(), details)?).await?;
+            let author_id = match &details.author {
+                Some(name) => {
+                    let mut authors = Author::get_by_name(&chronicle, &name).await?;
+
+                    match authors.len() {
+                        0 => None,
+                        1 => Some(authors.remove(0).author_id),
+                        _ => anyhow::bail!("Author {name} is ambiguous"),
+                    }
+                }
+                None => None,
+            };
+
+            let record =
+                Record::from_path(&chronicle, relative_path.to_owned(), details.clone().into())?;
+
+            Work::create_from_record(&chronicle, &record, author_id).await?;
         }
-        Command::WriteConfig => {
-            let config_path = PROJECT_DIRS.config_dir().join("config.toml");
-
-            fs::create_dir_all(PROJECT_DIRS.config_dir())?;
-
-            fs::write(config_path, toml::to_string_pretty(&*CONFIG)?)?;
-        }
-        Command::Login { service } => match service {
-            ServiceCredentials::Bsky {
-                identifier,
-                password,
-            } => {
-                let password_entry = keyring::Entry::new(SERVICE_NAME, BSKY_PASSWORD)?;
-                password_entry.set_password(&password)?;
-
-                let identifier_entry = keyring::Entry::new(SERVICE_NAME, BSKY_IDENTIFIER)?;
-                identifier_entry.set_password(&identifier)?;
+        Command::Service {
+            command: ServiceCommand::List,
+        } => {
+            for service in SERVICES.services.iter() {
+                println!("{}", service.name());
             }
-        },
+        }
+        Command::Service {
+            command: ServiceCommand::Login {
+                service: service_name,
+            },
+        } => {
+            let service = SERVICES.services.iter().find(|s| s.name() == service_name);
+
+            if let Some(service) = service {
+                let mut buffer = String::new();
+                let mut stdin = stdin();
+
+                for secret_key in service.secrets() {
+                    print!("{secret_key}: ");
+                    stdin.read_line(&mut buffer);
+
+                    if let Err(err) = service.write_secret(secret_key, &buffer) {
+                        error!("Could not write secret: {secret_key}: {err}");
+                    }
+                    buffer.clear();
+                }
+            } else {
+                error!("Invalid service: {service_name}");
+            }
+        }
         Command::Tag { targets, tags } => {
             for target in targets {
-                if let Err(err) = tag_tag(&db, &target, &tags).await {
-                    error!("Failed to tag: {target}: {err}");
+                let target_tag = Tag::create(&chronicle, &target).await?;
+
+                for tag in tags {
+                    target_tag.tag(&chronicle, tag).await?;
                 }
             }
         }
+        _ => unreachable!(),
     }
+
+    tx.commit().await?;
 
     Ok(())
 }

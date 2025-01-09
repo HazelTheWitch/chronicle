@@ -1,1 +1,2 @@
-
+database_path = "~/.local/share/chronicle/database.db"
+data_path = "~/.local/share/chronicle/works"
