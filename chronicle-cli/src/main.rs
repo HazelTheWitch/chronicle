@@ -2,7 +2,7 @@ mod args;
 
 use std::{
     fs::{self, OpenOptions},
-    io::stdin,
+    io::{stdin, stdout, Write},
     path::PathBuf,
 };
 
@@ -196,13 +196,15 @@ async fn main() -> anyhow::Result<()> {
 
             if let Some(service) = service {
                 let mut buffer = String::new();
-                let mut stdin = stdin();
+                let stdin = stdin();
+                let mut stdout = stdout();
 
                 for secret_key in service.secrets() {
-                    print!("{secret_key}: ");
-                    stdin.read_line(&mut buffer);
+                    write!(stdout, "{secret_key}: ")?;
+                    stdout.flush()?;
+                    stdin.read_line(&mut buffer)?;
 
-                    if let Err(err) = service.write_secret(secret_key, &buffer) {
+                    if let Err(err) = service.write_secret(secret_key, buffer.trim()) {
                         error!("Could not write secret: {secret_key}: {err}");
                     }
                     buffer.clear();
