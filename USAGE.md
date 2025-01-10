@@ -14,9 +14,9 @@
 ### Tag Expressions
 
 Single Tags: `tag1`
-Multiple Tags: `tag1,tag2`
-Hierarchal Tags: `tag1<tag2`
-Grouping Tags: `tag1<(tag2,tag3)`
+Multiple Tags: `(tag1,tag2)`
+Hierarchal Tags: `tag1/tag2`
+Grouping Tags: `tag1/(tag2,tag3)`
 
 ### Commands
 
@@ -36,3 +36,11 @@ Url: `https://some.artists.url`
 - `chronicle author list [<author display options>]`
 - `chronicle author alias [<author display options>] <author query> <name>`
 - `chronicle author add-url [<author display options>] <url>`
+
+
+## Services
+
+### Commands
+
+- `chronicle service list`
+- `chronicle service login <service>`

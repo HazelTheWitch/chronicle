@@ -13,7 +13,7 @@ fn tag_sequence(i: &str) -> ParseResult<Vec<&str>> {
 }
 
 pub fn tag_expression(i: &str) -> ParseResult<Vec<Vec<&str>>> {
-    separated_list1(char('<'), tag_sequence)(i)
+    separated_list1(char('/'), tag_sequence)(i)
 }
 
 #[cfg(test)]

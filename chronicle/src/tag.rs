@@ -11,6 +11,7 @@ use crate::{
     Chronicle,
 };
 
+#[derive(Debug, Clone)]
 pub struct TagExpression {
     pub hierarchy: Vec<Vec<String>>,
 }

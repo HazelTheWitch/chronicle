@@ -18,6 +18,4 @@ tracing-subscriber = { version = "0.3.19" }
 url = "2.5.4"
 uuid = "1.11.0"
 directories = "5.0.1"
-ratatui = "0.29.0"
-crossterm = "0.28.1"
 tracing-error = "0.2.1"

@@ -14,7 +14,7 @@ pub mod builder;
 mod parse;
 
 // TODO: Add Id query term
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq, Debug, Clone)]
 pub enum QueryTerm {
     Tag(String),
     Title(String),
@@ -58,7 +58,7 @@ impl From<QueryTerm> for Query {
     }
 }
 
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq, Debug, Clone)]
 pub enum Query {
     Term(QueryTerm),
     Not(Box<Query>),

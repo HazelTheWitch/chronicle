@@ -5,6 +5,7 @@ use crate::{
     Chronicle,
 };
 
+#[derive(Debug, Clone)]
 pub enum AuthorQuery {
     Name(String),
     Id(i32),
