@@ -2,6 +2,7 @@ pub mod author;
 pub mod id;
 pub mod import;
 pub mod models;
+pub(crate) mod parse;
 pub mod record;
 pub mod search;
 pub mod tag;
@@ -10,8 +11,8 @@ pub mod utils;
 use std::{fs, io, path::PathBuf};
 
 use models::ModelKind;
+use parse::ParseError;
 use record::Record;
-use search::SearchError;
 use serde::{Deserialize, Serialize};
 use sqlx::{migrate::MigrateError, SqlitePool};
 use tracing::{debug, error, info};
@@ -121,7 +122,7 @@ pub enum Error {
     #[error("{kind} '{identifier}' is ambiguous")]
     Ambiguous { kind: ModelKind, identifier: String },
     #[error(transparent)]
-    Search(#[from] SearchError),
+    Search(#[from] ParseError),
     #[error(transparent)]
     Migration(#[from] MigrateError),
     #[error("could not expand {0}")]

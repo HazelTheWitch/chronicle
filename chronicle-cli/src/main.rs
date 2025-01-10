@@ -1,4 +1,6 @@
 mod args;
+mod logging;
+mod ui;
 
 use std::{
     fs::{self, OpenOptions},
@@ -9,6 +11,7 @@ use std::{
 use anyhow::bail;
 use args::{Arguments, Command, ServiceCommand};
 use chronicle::{
+    author::AuthorQuery,
     import::SERVICES,
     models::{Author, Tag, Work},
     record::Record,
@@ -18,9 +21,9 @@ use chronicle::{
 use clap::Parser;
 use directories::ProjectDirs;
 use lazy_static::lazy_static;
+use logging::initialize_logging;
 use tokio::sync::OnceCell;
 use tracing::{error, info, warn};
-use url::Url;
 use uuid::Uuid;
 
 lazy_static! {
@@ -44,14 +47,12 @@ pub async fn get_chronicle() -> &'static Chronicle {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    tracing_subscriber::fmt()
-        .with_max_level(ARGUMENTS.log_level)
-        .init();
-
-    if matches!(ARGUMENTS.command, Command::WriteConfig) {
+    if matches!(ARGUMENTS.command, Some(Command::WriteConfig)) {
         fs::write(&ARGUMENTS.config, chronicle::DEFAULT_CONFIG)?;
         return Ok(());
     }
+
+    initialize_logging()?;
 
     let chronicle = get_chronicle().await;
 
@@ -73,7 +74,7 @@ async fn main() -> anyhow::Result<()> {
     let tx = chronicle.pool.begin().await?;
 
     match &ARGUMENTS.command {
-        Command::List => {
+        Some(Command::List) => {
             let works = Work::get_all(&chronicle).await?;
 
             for work in works {
@@ -90,7 +91,7 @@ async fn main() -> anyhow::Result<()> {
                 println!();
             }
         }
-        Command::Search { destination, query } => {
+        Some(Command::Search { destination, query }) => {
             let works = Work::search_by_str(&chronicle, &query).await?;
 
             println!("Found {} matches.", works.len());
@@ -112,11 +113,11 @@ async fn main() -> anyhow::Result<()> {
                 }
             }
         }
-        Command::Import {
+        Some(Command::Import {
             link,
             force,
             details,
-        } => {
+        }) => {
             if !force
                 && Work::search(&chronicle, &QueryTerm::Url(link.clone()).into())
                     .await?
@@ -130,11 +131,11 @@ async fn main() -> anyhow::Result<()> {
             Work::import_works_from_url(&chronicle, &link, Some(details.clone().into()), None)
                 .await?;
         }
-        Command::Add {
+        Some(Command::Add {
             path,
             copy,
             details,
-        } => {
+        }) => {
             if !fs::metadata(&path)?.is_file() {
                 bail!("Provided path is not a file.");
             }
@@ -164,7 +165,8 @@ async fn main() -> anyhow::Result<()> {
 
             let author_id = match &details.author {
                 Some(name) => {
-                    let mut authors = Author::get_by_name(&chronicle, &name).await?;
+                    let mut authors =
+                        Author::get(&chronicle, AuthorQuery::Name(name.to_string())).await?;
 
                     match authors.len() {
                         0 => None,
@@ -180,18 +182,18 @@ async fn main() -> anyhow::Result<()> {
 
             Work::create_from_record(&chronicle, &record, author_id).await?;
         }
-        Command::Service {
+        Some(Command::Service {
             command: ServiceCommand::List,
-        } => {
+        }) => {
             for service in SERVICES.services.iter() {
                 println!("{}", service.name());
             }
         }
-        Command::Service {
+        Some(Command::Service {
             command: ServiceCommand::Login {
                 service: service_name,
             },
-        } => {
+        }) => {
             let service = SERVICES.services.iter().find(|s| s.name() == service_name);
 
             if let Some(service) = service {
@@ -213,7 +215,7 @@ async fn main() -> anyhow::Result<()> {
                 error!("Invalid service: {service_name}");
             }
         }
-        Command::Tag { targets, tags } => {
+        Some(Command::Tag { targets, tags }) => {
             for target in targets {
                 let target_tag = Tag::create(&chronicle, &target).await?;
 

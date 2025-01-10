@@ -3,24 +3,17 @@ use std::{
     hash::{Hash, Hasher},
     io::{self, stdout, Write},
     iter::{once, repeat_n},
+    str::FromStr,
 };
 
 use builder::SearchQueryBuilder;
-use thiserror::Error;
 
-use crate::{models::Work, utils::hash_t, Chronicle};
+use crate::{models::Work, parse::ParseError, utils::hash_t, Chronicle};
 
 pub mod builder;
 mod parse;
 
-#[derive(Debug, Error)]
-pub enum SearchError {
-    #[error("could not parse: {0}")]
-    Parse(String),
-    #[error("parser did not finish: '{0}'")]
-    ParserDidNotFinish(String),
-}
-
+// TODO: Add Id query term
 #[derive(PartialEq, Eq, Debug)]
 pub enum QueryTerm {
     Tag(String),
@@ -90,21 +83,22 @@ pub enum Operation {
     Or,
 }
 
-impl Query {
-    pub fn parse(query: &str) -> Result<Self, crate::Error> {
+impl FromStr for Query {
+    type Err = ParseError;
+
+    fn from_str(query: &str) -> Result<Self, Self::Err> {
         let lower_query = query.to_lowercase();
-        let (left, result) =
-            parse::query(&lower_query).map_err(|err| SearchError::Parse(err.to_string()))?;
+        let (left, result) = parse::query(&lower_query)?;
 
         if !left.is_empty() {
-            return Err(crate::Error::Search(SearchError::ParserDidNotFinish(
-                left.to_string(),
-            )));
+            return Err(ParseError::ParserDidNotFinish(left.to_string()));
         }
 
         Ok(result.into_normalized())
     }
+}
 
+impl Query {
     fn table_name(&self) -> String {
         format!("t{hash:X}", hash = hash_t(self))
     }
@@ -260,7 +254,7 @@ impl Work {
         chronicle: &Chronicle,
         search_query: &str,
     ) -> Result<Vec<Work>, crate::Error> {
-        let query = Query::parse(search_query)?;
+        let query = Query::from_str(search_query)?;
 
         Self::search(chronicle, &query).await
     }
@@ -268,15 +262,17 @@ impl Work {
 
 #[cfg(test)]
 mod tests {
+    use std::str::FromStr;
+
     use crate::utils::hash_t;
 
     use super::Query;
 
     #[test]
     fn test_normalization() {
-        let query1 = Query::parse("a b c").unwrap();
-        let query2 = Query::parse("a c b").unwrap();
-        let query3 = Query::parse("c b a").unwrap();
+        let query1 = Query::from_str("a b c").unwrap();
+        let query2 = Query::from_str("a c b").unwrap();
+        let query3 = Query::from_str("c b a").unwrap();
 
         assert_eq!(hash_t(&query1), hash_t(&query2));
         assert_eq!(hash_t(&query1), hash_t(&query3));
@@ -284,17 +280,17 @@ mod tests {
 
     #[test]
     fn test_deep_normalization() {
-        let query1 = Query::parse("(a or b) and (c or d) and not e").unwrap();
-        let query2 = Query::parse("(d or c) and not e (a or b)").unwrap();
+        let query1 = Query::from_str("(a or b) and (c or d) and not e").unwrap();
+        let query2 = Query::from_str("(d or c) and not e (a or b)").unwrap();
 
         assert_eq!(hash_t(&query1), hash_t(&query2));
     }
 
     #[test]
     fn test_repetitive_normalization() {
-        let query1 = Query::parse("a").unwrap();
-        let query2 = Query::parse("a a a a a").unwrap();
-        let query3 = Query::parse("a:a").unwrap();
+        let query1 = Query::from_str("a").unwrap();
+        let query2 = Query::from_str("a a a a a").unwrap();
+        let query3 = Query::from_str("a:a").unwrap();
 
         assert_eq!(hash_t(&query1), hash_t(&query2));
         assert_ne!(hash_t(&query1), hash_t(&query3));

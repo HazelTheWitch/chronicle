@@ -8,6 +8,8 @@ use nom::{
     IResult,
 };
 
+use crate::parse::string;
+
 use super::{Query, QueryTerm};
 
 fn term_kind(input: &str) -> IResult<&str, &str, nom::error::VerboseError<&str>> {
@@ -22,29 +24,6 @@ fn term_kind(input: &str) -> IResult<&str, &str, nom::error::VerboseError<&str>>
         tag("a"),
         tag("c"),
         tag("u"),
-    ))(input)
-}
-
-fn identifier(input: &str) -> IResult<&str, &str, nom::error::VerboseError<&str>> {
-    recognize(many1(alt((tag("_"), tag("-"), alphanumeric1))))(input)
-}
-
-fn quote(input: &str) -> IResult<&str, &str, nom::error::VerboseError<&str>> {
-    alt((tag("'"), tag("\"")))(input)
-}
-
-fn special_chars(input: &str) -> IResult<&str, &str, nom::error::VerboseError<&str>> {
-    recognize(many1(one_of("$.+!*'(),;/?:@=&")))(input)
-}
-
-fn string(input: &str) -> IResult<&str, &str, nom::error::VerboseError<&str>> {
-    alt((
-        delimited(
-            quote,
-            recognize(many1(alt((space1, identifier, special_chars)))),
-            quote,
-        ),
-        preceded(nom::combinator::not(not), identifier),
     ))(input)
 }
 

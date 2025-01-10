@@ -1,7 +1,29 @@
+use std::{convert::Infallible, str::FromStr};
+
 use crate::{
     models::{Author, AuthorName},
     Chronicle,
 };
+
+pub enum AuthorQuery {
+    Name(String),
+    Id(i32),
+    Url(url::Url),
+}
+
+impl FromStr for AuthorQuery {
+    type Err = Infallible;
+
+    fn from_str(query: &str) -> Result<Self, Self::Err> {
+        if let Ok(id) = i32::from_str(query) {
+            return Ok(Self::Id(id));
+        } else if let Ok(url) = url::Url::from_str(query) {
+            return Ok(Self::Url(url));
+        }
+
+        Ok(Self::Name(query.to_owned()))
+    }
+}
 
 impl Author {
     pub async fn create(chronicle: &Chronicle, name: &str) -> Result<Author, crate::Error> {
@@ -18,16 +40,31 @@ impl Author {
         Ok(author)
     }
 
-    pub async fn get_by_name(
+    pub async fn get(
         chronicle: &Chronicle,
-        name: &str,
+        query: AuthorQuery,
     ) -> Result<Vec<Author>, crate::Error> {
-        Ok(
-            sqlx::query_as("SELECT author_id FROM author_names WHERE name = ?;")
-                .bind(name)
-                .fetch_all(&chronicle.pool)
-                .await?,
-        )
+        Ok(match query {
+            AuthorQuery::Name(name) => {
+                sqlx::query_as("SELECT * FROM author_names WHERE name = ?;")
+                    .bind(name)
+                    .fetch_all(&chronicle.pool)
+                    .await?
+            },
+            AuthorQuery::Id(id) => {
+                sqlx::query_as("SELECT * FROM author_names WHERE author_id = ?;")
+                    .bind(id)
+                    .fetch_all(&chronicle.pool)
+                    .await?
+            },
+            AuthorQuery::Url(url) => {
+                sqlx::query_as("SELECT * FROM authors JOIN author_urls ON authors.author_id = author_urls.author_id WHERE author_urls.url = ?;")
+                    .bind(url.to_string())
+                    .fetch_all(&chronicle.pool)
+                    .await?
+            },
+
+        })
     }
 
     pub async fn get_author_names(
@@ -35,7 +72,7 @@ impl Author {
         chronicle: &Chronicle,
     ) -> Result<Vec<AuthorName>, crate::Error> {
         Ok(
-            sqlx::query_as("SELECT name FROM author_names WHERE author_id = ?;")
+            sqlx::query_as("SELECT * FROM author_names WHERE author_id = ?;")
                 .bind(&self.author_id)
                 .fetch_all(&chronicle.pool)
                 .await?,

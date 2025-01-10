@@ -14,10 +14,12 @@ use crate::PROJECT_DIRS;
 pub struct Arguments {
     #[arg(short, long, env = "CHRONICLE_LOG", default_value_t = Level::INFO)]
     pub log_level: Level,
+    #[arg(long, default_value = PROJECT_DIRS.data_dir().join("chronicle.log").into_os_string())]
+    pub log_location: PathBuf,
     #[arg(short, long, default_value = PROJECT_DIRS.config_dir().join("config.toml").into_os_string())]
     pub config: PathBuf,
     #[command(subcommand)]
-    pub command: Command,
+    pub command: Option<Command>,
 }
 
 #[derive(Subcommand)]
