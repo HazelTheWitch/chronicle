@@ -2,6 +2,15 @@
 name = "chronicle-cli"
 version = { workspace = true }
 edition = { workspace = true }
+authors = { workspace = true }
+repository = { workspace = true }
+description = { workspace = true }
+
+[package.metadata.wix]
+upgrade-guid = "01A74342-8B2D-4D9F-8E31-A840C5F18CFF"
+path-guid = "BCD2DB88-2184-47D1-ACEB-4934C7FBB7C7"
+license = false
+eula = false
 
 [[bin]]
 name = "chronicle"
