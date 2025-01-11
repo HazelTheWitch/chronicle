@@ -2,20 +2,27 @@ use std::{
     fs::File,
     future::Future,
     io::{stdin, BufRead, BufReader, Read},
-    path::Path,
+    path::{Path, PathBuf},
     process::ExitCode,
+    str::FromStr,
     time::Duration,
 };
 
-use chronicle::{models::Work, record::RecordDetails};
+use chronicle::{
+    models::Work,
+    record::{Record, RecordDetails},
+    tag::TagExpression,
+};
 use clap::Parser;
 use indicatif::{MultiProgress, ProgressBar};
 use tokio::{sync::mpsc, task::JoinSet, time::sleep};
 use url::Url;
+use uuid::Uuid;
 
 use crate::{
     args::{BulkCommand, WorkDetails},
-    get_chronicle, write_success, ERROR_STYLE, PREFIX_STYLE, SPINNER_STYLE, TERMINAL,
+    get_chronicle, write_failure, write_success, ERROR_STYLE, PREFIX_STYLE, SPINNER_STYLE,
+    TERMINAL,
 };
 
 pub async fn bulk_operation<
@@ -100,13 +107,6 @@ pub async fn bulk_operation<
         .collect::<Vec<_>>())
 }
 
-fn file_or_stdin(path: Option<&Path>) -> anyhow::Result<Box<dyn Read>> {
-    match path {
-        Some(path) => Ok(Box::new(File::open(path)?)),
-        None => Ok(Box::new(stdin())),
-    }
-}
-
 #[derive(Parser)]
 struct BulkImportCommand {
     pub url: Url,
@@ -117,7 +117,7 @@ struct BulkImportCommand {
 pub async fn bulk(tasks: usize, command: &BulkCommand) -> anyhow::Result<ExitCode> {
     match command {
         BulkCommand::Import { path, details } => {
-            let reader = BufReader::new(file_or_stdin(path.as_deref())?);
+            let reader = BufReader::new(File::open(&path)?);
 
             let urls = reader.lines();
 
@@ -167,8 +167,124 @@ pub async fn bulk(tasks: usize, command: &BulkCommand) -> anyhow::Result<ExitCod
 
             write_success(&format!("Imported {} works", works.len()))?;
         }
-        BulkCommand::Add { path } => todo!(),
-        BulkCommand::Tag { path } => todo!(),
+        BulkCommand::Add { path, details } => {
+            let reader = BufReader::new(File::open(&path)?);
+
+            let paths = reader.lines();
+
+            let record_details: RecordDetails = details.clone().into();
+
+            let works = bulk_operation(
+                paths.flatten().collect(),
+                record_details,
+                |bar: ProgressBar, path: String, details: RecordDetails| async move {
+                    let chronicle = get_chronicle().await;
+
+                    let original_path = PathBuf::from(path);
+
+                    let file_name = if let Some(extension) = original_path.extension() {
+                        format!("{}.{}", Uuid::new_v4(), extension.to_string_lossy())
+                    } else {
+                        Uuid::new_v4().to_string()
+                    };
+
+                    let new_full_path = chronicle.config.data_path.join(&file_name);
+
+                    if let Err(err) = tokio::fs::copy(&original_path, &new_full_path).await {
+                        bar.println(
+                            &ERROR_STYLE
+                                .apply_to(format!(
+                                    "Could not copy {original_path:?} -> {new_full_path:?}: {err}"
+                                ))
+                                .to_string(),
+                        );
+                        return None;
+                    }
+
+                    let record = match Record::from_path(
+                        &chronicle,
+                        PathBuf::from(&file_name),
+                        details.clone(),
+                    ) {
+                        Ok(record) => record,
+                        Err(err) => {
+                            bar.println(
+                                &ERROR_STYLE
+                                    .apply_to(format!("Could not create record from file: {err}"))
+                                    .to_string(),
+                            );
+                            return None;
+                        }
+                    };
+
+                    match Work::create_from_record(&chronicle, &record).await {
+                        Ok(work) => Some(work),
+                        Err(err) => {
+                            bar.println(
+                                &ERROR_STYLE
+                                    .apply_to(format!("Could not create work: {err}"))
+                                    .to_string(),
+                            );
+                            None
+                        }
+                    }
+                },
+                "Adding",
+                tasks,
+            )
+            .await?
+            .into_iter()
+            .flatten()
+            .collect::<Vec<Work>>();
+
+            write_success(&format!("Added {} works", works.len(),))?;
+        }
+        BulkCommand::Tag { path } => {
+            let reader = BufReader::new(File::open(&path)?);
+
+            let paths = reader.lines();
+
+            let tagged = bulk_operation(
+                paths.flatten().collect(),
+                (),
+                |bar: ProgressBar, tag_expression: String, _: ()| async move {
+                    let expression = match TagExpression::from_str(&tag_expression) {
+                        Ok(expression) => expression,
+                        Err(err) => {
+                            bar.println(
+                                &ERROR_STYLE
+                                    .apply_to(format!("Could not parse '{tag_expression}': {err}"))
+                                    .to_string(),
+                            );
+
+                            return 0;
+                        }
+                    };
+
+                    match expression.execute(get_chronicle().await).await {
+                        Ok(total) => total,
+                        Err(err) => {
+                            bar.println(
+                                &ERROR_STYLE
+                                    .apply_to(format!(
+                                        "Could not execute '{tag_expression}': {err}"
+                                    ))
+                                    .to_string(),
+                            );
+
+                            return 0;
+                        }
+                    }
+                },
+                "Tagging",
+                tasks,
+            )
+            .await?
+            .into_iter()
+            .sum::<usize>();
+
+            write_success(&format!("Tagged {tagged} new connections"))?;
+        }
     }
 
     Ok(ExitCode::SUCCESS)

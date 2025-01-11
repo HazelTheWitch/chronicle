@@ -35,6 +35,7 @@ pub struct RecordDetails {
     pub title: Option<String>,
     pub url: Option<url::Url>,
     pub author: Option<AuthorQuery>,
+    pub author_url: Option<url::Url>,
     pub caption: Option<String>,
     pub tags: Vec<String>,
 }
@@ -52,6 +53,9 @@ impl RecordDetails {
         }
         if let Some(caption) = other.caption {
             self.caption = Some(caption);
+        }
+        if let Some(author_url) = other.author_url {
+            self.author_url = Some(author_url);
         }
         self.tags.extend(other.tags);
     }

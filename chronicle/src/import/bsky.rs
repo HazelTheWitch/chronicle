@@ -23,6 +23,7 @@ use regex::Regex;
 use serde::Deserialize;
 use tokio::sync::{OnceCell, RwLock};
 use tracing::{error, warn};
+use url::Url;
 use uuid::Uuid;
 
 use crate::{
@@ -139,6 +140,10 @@ impl Service for Bsky {
             tags: Vec::new(),
             title: None,
             author: Some(AuthorQuery::Name(author.to_string())),
+            author_url: Some(
+                Url::parse(&format!("https://bsky.app/profile/{author}"))
+                    .expect("invalid author url"),
+            ),
             url: Some(url),
             caption: Some(caption),
         };

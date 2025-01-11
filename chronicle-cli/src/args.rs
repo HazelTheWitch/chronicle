@@ -61,30 +61,24 @@ pub enum Command {
 pub enum BulkCommand {
     /// Import a list of urls
     Import {
-        /// The path to a file containing a list of urls, if omitted the list is read from stdin
-        ///
-        /// The format of each line of this file should be
-        ///
-        /// <url> [same options as `chronicle work import`]
-        path: Option<PathBuf>,
+        /// The path to a file containing a list of urls
+        path: PathBuf,
         #[command(flatten)]
         details: BulkWorkDetails,
     },
     /// Import a list of paths as works
     Add {
-        /// The path to a file containing a list of paths, if ommitted the list is read from stdin
-        ///
-        /// The format of each line of this file should be
-        ///
-        /// <path> [same options as `chronicle work add`]
-        path: Option<PathBuf>,
+        /// The path to a file containing a list of paths
+        path: PathBuf,
+        #[command(flatten)]
+        details: BulkWorkDetails,
     },
     /// Performs a series of tag operations
     Tag {
         /// The path to a file containing a list of tag operations
         ///
         /// The format of each line of this file should be the same as the input for `chronicle tag`
-        path: Option<PathBuf>,
+        path: PathBuf,
     },
 }
 
@@ -140,6 +134,8 @@ pub enum AuthorCommand {
         ///
         /// Can be a name, id, or url
         query: AuthorQuery,
+        /// The url to assign to the author
+        url: Url,
     },
 }
 
@@ -147,7 +143,7 @@ pub enum AuthorCommand {
 pub enum ServiceCommand {
     /// Login to a service
     Login {
-        /// The service to log into, if omitted will prompt for each service in sequence
+        /// The service to log into
         service: Option<String>,
     },
     /// List all services available
@@ -164,7 +160,7 @@ pub struct WorkDisplayOptions {
 #[derive(Debug, Args)]
 pub struct AuthorDisplayOptions {
     /// Specifies which columns to display
-    #[arg(short, long, value_enum, default_values_t = vec![AuthorColumn::Id, AuthorColumn::Aliases])]
+    #[arg(short, long, value_enum, default_values_t = vec![AuthorColumn::Id, AuthorColumn::Aliases, AuthorColumn::Urls])]
     pub columns: Vec<AuthorColumn>,
 }
 
@@ -202,6 +198,16 @@ impl Display for WorkColumn {
     }
 }
 
+impl Display for AuthorColumn {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AuthorColumn::Id => write!(f, "ID"),
+            AuthorColumn::Aliases => write!(f, "ALIASES"),
+            AuthorColumn::Urls => write!(f, "URLS"),
+        }
+    }
+}
+
 #[derive(Debug, Default, Clone, Args)]
 pub struct WorkDetails {
     /// A list of tags to associate with the work
@@ -216,7 +222,7 @@ pub struct WorkDetails {
     #[arg(short, long)]
     pub url: Option<Url>,
     /// The caption associated with the work
-    #[arg(long)]
+    #[arg(short, long)]
     pub caption: Option<String>,
 }
 
@@ -251,6 +257,7 @@ impl From<WorkDetails> for RecordDetails {
             author,
             url,
             caption,
+            author_url: None,
         }
     }
 }
@@ -270,6 +277,7 @@ impl From<BulkWorkDetails> for RecordDetails {
             author,
             caption,
             tags,
+            author_url: None,
         }
     }
 }

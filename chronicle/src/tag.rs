@@ -47,27 +47,82 @@ impl FromStr for TagExpression {
     }
 }
 
+impl TagExpression {
+    pub fn approximate_connections(&self) -> usize {
+        self.hierarchy
+            .windows(2)
+            .map(|window| window[0].len() * window[1].len())
+            .sum::<usize>()
+    }
+
+    pub async fn execute(&self, chronicle: &Chronicle) -> Result<usize, crate::Error> {
+        let mut total_connections = 0;
+
+        let tx = chronicle.pool.begin().await?;
+
+        let works = if let Some(query) = &self.query {
+            Work::search(&chronicle, query).await?
+        } else {
+            Vec::new()
+        };
+
+        if !works.is_empty() {
+            let tags = &self.hierarchy[0];
+
+            for work in &works {
+                for tag in tags {
+                    if work.tag(&chronicle, tag).await? {
+                        total_connections += 1;
+                    }
+                }
+            }
+        }
+
+        if self.hierarchy.len() > 1 {
+            for window in self.hierarchy.windows(2) {
+                let previous_tags = &window[0];
+                let next_tags = &window[1];
+
+                for tag in previous_tags {
+                    let tag = Tag::get_or_create(&chronicle, &tag).await?;
+
+                    for next in next_tags {
+                        if tag.tag(&chronicle, next).await? {
+                            total_connections += 1;
+                        }
+                    }
+                }
+            }
+        }
+
+        tx.commit().await?;
+
+        Ok(total_connections)
+    }
+}
+
 impl Work {
     pub async fn tag(
         &self,
         chronicle: &Chronicle,
         tag: impl AsRef<str>,
-    ) -> Result<(), crate::Error> {
+    ) -> Result<bool, crate::Error> {
         let tx = chronicle.pool.begin().await?;
 
-        sqlx::query(r#"
+        let success = sqlx::query_as::<_, (i32,)>(r#"
                 INSERT OR IGNORE INTO tags(name) VALUES (?);
-                INSERT OR IGNORE INTO work_tags(tag, work_id) VALUES ((SELECT id FROM tags WHERE name = ?), ?);
+                INSERT OR IGNORE INTO work_tags(tag, work_id) VALUES ((SELECT id FROM tags WHERE name = ?), ?) RETURNING 1;
             "#)
             .bind(tag.as_ref())
             .bind(tag.as_ref())
             .bind(&self.work_id)
-            .execute(&chronicle.pool)
-            .await?;
+            .fetch_optional(&chronicle.pool)
+            .await?
+            .is_some();
 
         tx.commit().await?;
 
-        Ok(())
+        Ok(success)
     }
 }
 
@@ -99,23 +154,24 @@ impl Tag {
         &self,
         chronicle: &Chronicle,
         tag: impl AsRef<str>,
-    ) -> Result<(), crate::Error> {
+    ) -> Result<bool, crate::Error> {
         let tx = chronicle.pool.begin().await?;
 
-        sqlx::query(
+        let success = sqlx::query_as::<_, (i32,)>(
                 r#"
                     INSERT OR IGNORE INTO tags(name) VALUES (?);
-                    INSERT OR IGNORE INTO meta_tags(tag, target) VALUES ((SELECT id FROM tags WHERE name = ?), ?);
+                    INSERT OR IGNORE INTO meta_tags(tag, target) VALUES ((SELECT id FROM tags WHERE name = ?), ?) RETURNING 1;
                 "#,
             )
             .bind(tag.as_ref())
             .bind(tag.as_ref())
             .bind(&self.id)
-            .execute(&chronicle.pool)
-            .await?;
+            .fetch_optional(&chronicle.pool)
+            .await?
+            .is_some();
 
         tx.commit().await?;
 
-        Ok(())
+        Ok(success)
     }
 }

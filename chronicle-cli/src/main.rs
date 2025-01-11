@@ -1,4 +1,5 @@
 mod args;
+mod author;
 mod bulk;
 mod logging;
 mod table;
@@ -8,10 +9,12 @@ mod work;
 
 use std::{fs, process::ExitCode};
 
-use args::{Arguments, Command};
-use chronicle::{Chronicle, DEFAULT_CONFIG};
+use args::{Arguments, Command, ServiceCommand};
+use author::author_command;
+use chronicle::{import::SERVICES, Chronicle, DEFAULT_CONFIG};
 use clap::Parser;
 use console::{Style, Term};
+use dialoguer::{Password, Select};
 use directories::ProjectDirs;
 use indicatif::ProgressStyle;
 use lazy_static::lazy_static;
@@ -73,8 +76,65 @@ async fn fallible() -> anyhow::Result<ExitCode> {
     match &ARGUMENTS.command {
         Command::Work { command } => work_command(command).await,
         Command::Tag { expression } => execute_tag_expression(expression).await,
-        Command::Author { command } => todo!(),
-        Command::Service { command } => todo!(),
+        Command::Author { command } => author_command(command).await,
+        Command::Service { command } => match command {
+            ServiceCommand::Login { service } => {
+                let services: Vec<_> = SERVICES
+                    .services
+                    .iter()
+                    .filter_map(|s| {
+                        if s.secrets().is_empty() {
+                            None
+                        } else {
+                            Some(s.name())
+                        }
+                    })
+                    .collect();
+
+                let service = match service {
+                    Some(service) => service,
+                    None => {
+                        let index = Select::new()
+                            .with_prompt("Select service to login")
+                            .items(&services)
+                            .interact()?;
+                        &SERVICES.services[index].name().to_owned()
+                    }
+                };
+
+                let Some(service) = SERVICES.services.iter().find(|s| s.name() == service) else {
+                    write_failure(&format!("Unknown service {service}"))?;
+                    return Ok(ExitCode::FAILURE);
+                };
+
+                for secret in service.secrets() {
+                    let Ok(value) = Password::new().with_prompt(secret.to_string()).interact()
+                    else {
+                        write_failure("Failed to recieve secret")?;
+                        return Ok(ExitCode::FAILURE);
+                    };
+
+                    if let Err(err) = service.write_secret(secret, &value) {
+                        write_failure(&format!("Failed to write secret: {err}"))?;
+                        return Ok(ExitCode::FAILURE);
+                    }
+                }
+
+                write_success(&format!(
+                    "Successfully wrote secrets for {}",
+                    service.name()
+                ))?;
+
+                Ok(ExitCode::SUCCESS)
+            }
+            ServiceCommand::List => {
+                for service in SERVICES.services.iter() {
+                    TERMINAL.write_line(service.name())?;
+                }
+
+                Ok(ExitCode::SUCCESS)
+            }
+        },
         Command::Bulk { command, tasks } => bulk::bulk(*tasks, command).await,
     }
 }

@@ -3,11 +3,13 @@ pub mod bsky;
 use std::{collections::HashMap, sync::Arc};
 
 use async_trait::async_trait;
+use sqlx::types::chrono;
 use tokio::sync::RwLock;
 use tracing::info;
 use url::Url;
 
 use crate::{
+    author::{self, AuthorQuery},
     models::{Author, Work},
     record::{Record, RecordDetails},
     Chronicle,
@@ -140,11 +142,18 @@ impl Work {
         let tx = chronicle.pool.begin().await?;
 
         let author_id = if let Some(author_query) = &record.details.author {
-            info!("author_id missing, attempting to get author via details");
             let mut authors = Author::get(&chronicle, author_query).await?;
 
             if authors.len() == 1 {
                 Some(authors.remove(0).author_id)
+            } else if authors.is_empty() {
+                if let AuthorQuery::Name(name) = author_query {
+                    let author = Author::create(&chronicle, name).await?;
+
+                    Some(author.author_id)
+                } else {
+                    None
+                }
             } else {
                 None
             }
@@ -162,6 +171,16 @@ impl Work {
             .bind(record.size as u32)
             .fetch_one(&chronicle.pool)
             .await?;
+
+        if let Some(author_id) = author_id {
+            if let Some(author_url) = &record.details.author_url {
+                let author = Author::get_by_id(&chronicle, &author_id)
+                    .await?
+                    .expect("author id exists but not found");
+
+                author.add_url(&chronicle, author_url).await?;
+            }
+        }
 
         for tag in record.details.tags.iter() {
             work.tag(&chronicle, tag).await?;

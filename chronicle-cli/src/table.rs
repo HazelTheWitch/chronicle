@@ -7,7 +7,10 @@ use std::{
 
 use console::{pad_str, truncate_str, Alignment, Term};
 
-use crate::{args::WorkColumn, fallible};
+use crate::{
+    args::{AuthorColumn, WorkColumn},
+    fallible,
+};
 
 pub struct ColumnBehavior {
     pub size: usize,
@@ -57,6 +60,28 @@ impl WorkColumn {
                 size: 12,
                 grow: false,
                 min_size: 12,
+            },
+        }
+    }
+}
+
+impl AuthorColumn {
+    pub fn behavior(&self) -> ColumnBehavior {
+        match self {
+            AuthorColumn::Id => ColumnBehavior {
+                size: 8,
+                grow: false,
+                min_size: 8,
+            },
+            AuthorColumn::Aliases => ColumnBehavior {
+                size: 32,
+                grow: true,
+                min_size: 24,
+            },
+            AuthorColumn::Urls => ColumnBehavior {
+                size: 32,
+                grow: true,
+                min_size: 24,
             },
         }
     }
