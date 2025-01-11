@@ -24,7 +24,7 @@ use crate::{
     get_chronicle,
     table::Table,
     utils::{format_hash, limit_len},
-    write_failure, write_success, ERROR_STYLE, PREFIX_STYLE, TERMINAL,
+    write_failure, write_success, ERROR_STYLE, PREFIX_STYLE, SPINNER_STYLE, TERMINAL,
 };
 
 pub async fn work_command(command: &WorkCommand) -> anyhow::Result<ExitCode> {
@@ -53,10 +53,7 @@ pub async fn work_import(source: &url::Url, details: &WorkDetails) -> anyhow::Re
     let spinner = ProgressBar::new_spinner();
 
     spinner.enable_steady_tick(Duration::from_millis(100));
-    spinner.set_style(
-        ProgressStyle::with_template("[{elapsed}] {spinner:^3} {prefix} {msg}")
-            .expect("invalid format"),
-    );
+    spinner.set_style(SPINNER_STYLE.clone());
 
     spinner.set_prefix(PREFIX_STYLE.apply_to("Importing").to_string());
     spinner.set_message(source.to_string());

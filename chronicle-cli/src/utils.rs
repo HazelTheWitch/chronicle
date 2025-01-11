@@ -1,4 +1,5 @@
 use bytemuck::cast;
+use indicatif::ProgressBar;
 
 pub fn format_hash(hash: i32) -> String {
     format!("{:0>8X}", cast::<i32, u32>(hash))

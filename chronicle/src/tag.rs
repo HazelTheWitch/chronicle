@@ -57,7 +57,7 @@ impl Work {
 
         sqlx::query(r#"
                 INSERT OR IGNORE INTO tags(name) VALUES (?);
-                INSERT INTO work_tags(tag, work_id) VALUES ((SELECT id FROM tags WHERE name = ?), ?);
+                INSERT OR IGNORE INTO work_tags(tag, work_id) VALUES ((SELECT id FROM tags WHERE name = ?), ?);
             "#)
             .bind(tag.as_ref())
             .bind(tag.as_ref())
@@ -82,11 +82,11 @@ impl Tag {
             .await?)
     }
 
-    pub async fn create(chronicle: &Chronicle, name: &str) -> Result<Tag, crate::Error> {
+    pub async fn get_or_create(chronicle: &Chronicle, name: &str) -> Result<Tag, crate::Error> {
         Ok(sqlx::query_as(
             r#"
             INSERT OR IGNORE INTO tags (name) VALUES (?);
-            SELECT * FROM tags WHERE id = ?;
+            SELECT * FROM tags WHERE name = ?;
         "#,
         )
         .bind(name)
@@ -105,7 +105,7 @@ impl Tag {
         sqlx::query(
                 r#"
                     INSERT OR IGNORE INTO tags(name) VALUES (?);
-                    INSERT INTO meta_tags(tag, target) VALUES ((SELECT id FROM tags WHERE name = ?), (SELECT id FROM tags WHERE name = ?));
+                    INSERT OR IGNORE INTO meta_tags(tag, target) VALUES ((SELECT id FROM tags WHERE name = ?), ?);
                 "#,
             )
             .bind(tag.as_ref())

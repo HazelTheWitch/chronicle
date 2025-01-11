@@ -1,6 +1,7 @@
 mod args;
 mod logging;
 mod table;
+mod tag;
 mod utils;
 mod work;
 
@@ -24,8 +25,10 @@ use chronicle::{
 use clap::Parser;
 use console::{Style, Term};
 use directories::ProjectDirs;
+use indicatif::ProgressStyle;
 use lazy_static::lazy_static;
 use logging::initialize_logging;
+use tag::execute_tag_expression;
 use tokio::sync::OnceCell;
 use tracing::{error, info, warn};
 use uuid::Uuid;
@@ -39,6 +42,13 @@ lazy_static! {
     pub static ref TERMINAL: Term = Term::stdout();
     pub static ref PREFIX_STYLE: Style = Style::new().green().bold();
     pub static ref ERROR_STYLE: Style = Style::new().red().bold();
+    pub static ref SPINNER_STYLE: ProgressStyle =
+        ProgressStyle::with_template("[{elapsed}] {spinner:^3} {prefix} {wide_msg}")
+            .expect("invalid format");
+    pub static ref PROGRESS_STYLE: ProgressStyle =
+        ProgressStyle::with_template("[{elapsed}] [{bar:16}] {prefix} {wide_msg}")
+            .expect("invalid format")
+            .progress_chars("=> ");
 }
 
 static CHRONICLE: OnceCell<Chronicle> = OnceCell::const_new();
@@ -75,7 +85,7 @@ async fn fallible() -> anyhow::Result<ExitCode> {
 
     match &ARGUMENTS.command {
         Command::Work { command } => work_command(command).await,
-        Command::Tag { expression } => todo!(),
+        Command::Tag { expression } => execute_tag_expression(expression).await,
         Command::Author { command } => todo!(),
         Command::Service { command } => todo!(),
         Command::Bulk { command } => todo!(),
