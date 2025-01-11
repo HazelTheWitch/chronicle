@@ -16,7 +16,7 @@ impl QueryTerm {
                     .push(" || '%'");
             }
             QueryTerm::Author(author) => {
-                b.push("SELECT work_id FROM works JOIN authors ON works.author_id = authors.author_id WHERE authors.name = ")
+                b.push("SELECT work_id FROM works JOIN authors ON works.author_id = authors.author_id JOIN author_names ON authors.author_id = author_names.author_id WHERE author_names.name = ")
                     .push_bind(author);
             }
             QueryTerm::Caption(caption) => {

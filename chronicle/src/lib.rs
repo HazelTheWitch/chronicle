@@ -8,7 +8,11 @@ pub mod search;
 pub mod tag;
 pub mod utils;
 
-use std::{fs, io, path::PathBuf};
+use std::{
+    fs::{self, create_dir_all},
+    io,
+    path::PathBuf,
+};
 
 use models::ModelKind;
 use parse::ParseError;
@@ -65,6 +69,10 @@ impl Chronicle {
                 .write(true)
                 .create(true)
                 .open(&config.database_path)?;
+        }
+
+        if !fs::exists(&config.data_path)? {
+            create_dir_all(&config.data_path)?;
         }
 
         debug!("Loaded config: {config:?}");

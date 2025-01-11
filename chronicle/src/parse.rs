@@ -29,7 +29,7 @@ pub type ParseResult<'s, T> = IResult<&'s str, T, nom::error::VerboseError<&'s s
 pub fn identifier(input: &str) -> ParseResult<&str> {
     recognize(pair(
         alphanumeric1,
-        many0(alt((tag("_"), tag("-"), alphanumeric1))),
+        many0(alt((tag("_"), tag("-"), tag("."), alphanumeric1))),
     ))(input)
 }
 

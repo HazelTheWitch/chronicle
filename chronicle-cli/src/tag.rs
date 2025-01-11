@@ -4,9 +4,9 @@ use chronicle::{
     models::{Tag, Work},
     tag::TagExpression,
 };
-use indicatif::{ProgressBar, ProgressStyle};
+use indicatif::ProgressBar;
 
-use crate::{get_chronicle, write_success, PREFIX_STYLE, PROGRESS_STYLE, SPINNER_STYLE};
+use crate::{get_chronicle, write_success, PREFIX_STYLE, SPINNER_STYLE};
 
 pub async fn execute_tag_expression(expression: &TagExpression) -> anyhow::Result<ExitCode> {
     let chronicle = get_chronicle().await;
