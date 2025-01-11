@@ -71,11 +71,9 @@ fn get_services() -> Services {
 impl Work {
     pub async fn import_works_from_url(
         chronicle: &Chronicle,
-        url: &str,
-        provided_details: Option<RecordDetails>,
+        url: &Url,
+        provided_details: Option<&RecordDetails>,
     ) -> Result<Vec<Work>, crate::Error> {
-        let url = Url::parse(url)?;
-
         let Some(host) = url.host_str() else {
             return Err(crate::Error::Generic(String::from(
                 "url does not have a host",

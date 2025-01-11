@@ -8,7 +8,7 @@ use std::{
 
 use async_trait::async_trait;
 use atrium_api::{
-    agent::{store::MemorySessionStore, AtpAgent},
+    agent::{store::MemorySessionStore, AtpAgent, Session},
     app::bsky::feed::{defs::PostViewEmbedRefs, get_post_thread},
     types::{TryFromUnknown, Union},
 };
@@ -21,7 +21,7 @@ use nom::{
 };
 use regex::Regex;
 use serde::Deserialize;
-use tokio::sync::RwLock;
+use tokio::sync::{OnceCell, RwLock};
 use tracing::{error, warn};
 use uuid::Uuid;
 
@@ -54,6 +54,8 @@ fn parse_bsky_path(i: &str) -> IResult<&str, BskyPath<'_>> {
 const BSKY_IDENTIFIER: &str = "bsky-identifier";
 const BSKY_PASSWORD: &str = "bsky-password";
 
+static AGENT: OnceCell<AtpAgent<MemorySessionStore, ReqwestClient>> = OnceCell::const_new();
+
 pub struct Bsky;
 
 #[async_trait]
@@ -73,20 +75,26 @@ impl Service for Bsky {
         records: &mut Vec<Record>,
         secrets: Arc<RwLock<HashMap<String, String>>>,
     ) -> Result<(), crate::Error> {
-        let agent = AtpAgent::new(
-            ReqwestClient::new("https://bsky.social"),
-            MemorySessionStore::default(),
-        );
+        let agent = AGENT
+            .get_or_try_init::<crate::Error, _, _>(|| async move {
+                let agent = AtpAgent::new(
+                    ReqwestClient::new("https://bsky.social"),
+                    MemorySessionStore::default(),
+                );
 
-        let secrets = secrets.read().await;
+                let secrets = secrets.read().await;
 
-        let identifier = secrets[BSKY_IDENTIFIER].as_str();
-        let password = secrets[BSKY_PASSWORD].as_str();
+                let identifier = secrets[BSKY_IDENTIFIER].as_str();
+                let password = secrets[BSKY_PASSWORD].as_str();
 
-        agent
-            .login(&identifier, &password)
-            .await
-            .map_err(ServiceError::from)?;
+                agent
+                    .login(&identifier, &password)
+                    .await
+                    .map_err(ServiceError::from)?;
+
+                Ok(agent)
+            })
+            .await?;
 
         let (_, BskyPath { did, post }) =
             parse_bsky_path(&url.path()).map_err(|_| crate::Error::InvalidUrl {

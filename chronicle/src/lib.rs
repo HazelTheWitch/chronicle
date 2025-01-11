@@ -124,7 +124,7 @@ pub enum Error {
 
 #[derive(Debug, thiserror::Error)]
 pub enum ServiceError {
-    #[error("error communicating with bsky")]
+    #[error("error communicating with bsky: {0}")]
     Bsky(Box<dyn std::error::Error + Send + Sync>),
 }
 

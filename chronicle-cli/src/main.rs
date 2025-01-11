@@ -1,27 +1,15 @@
 mod args;
+mod bulk;
 mod logging;
 mod table;
 mod tag;
 mod utils;
 mod work;
 
-use std::{
-    fs::{self, OpenOptions},
-    io::{stdin, stdout, IsTerminal, Write},
-    path::PathBuf,
-    process::ExitCode,
-};
+use std::{fs, process::ExitCode};
 
-use anyhow::bail;
-use args::{Arguments, Command, ServiceCommand};
-use chronicle::{
-    author::AuthorQuery,
-    import::SERVICES,
-    models::{Author, Tag, Work},
-    record::Record,
-    search::QueryTerm,
-    Chronicle, Config, DEFAULT_CONFIG,
-};
+use args::{Arguments, Command};
+use chronicle::{Chronicle, DEFAULT_CONFIG};
 use clap::Parser;
 use console::{Style, Term};
 use directories::ProjectDirs;
@@ -30,8 +18,7 @@ use lazy_static::lazy_static;
 use logging::initialize_logging;
 use tag::execute_tag_expression;
 use tokio::sync::OnceCell;
-use tracing::{error, info, warn};
-use uuid::Uuid;
+use tracing::error;
 use work::work_command;
 
 lazy_static! {
@@ -88,7 +75,7 @@ async fn fallible() -> anyhow::Result<ExitCode> {
         Command::Tag { expression } => execute_tag_expression(expression).await,
         Command::Author { command } => todo!(),
         Command::Service { command } => todo!(),
-        Command::Bulk { command } => todo!(),
+        Command::Bulk { command, tasks } => bulk::bulk(*tasks, command).await,
     }
 }
 

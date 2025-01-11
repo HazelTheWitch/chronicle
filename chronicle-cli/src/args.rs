@@ -49,6 +49,9 @@ pub enum Command {
     },
     /// Bulk operations
     Bulk {
+        /// The number of tasks to use when importing
+        #[arg(short, long, default_value_t = 4)]
+        tasks: usize,
         #[command(subcommand)]
         command: BulkCommand,
     },
@@ -64,6 +67,8 @@ pub enum BulkCommand {
         ///
         /// <url> [same options as `chronicle work import`]
         path: Option<PathBuf>,
+        #[command(flatten)]
+        details: BulkWorkDetails,
     },
     /// Import a list of paths as works
     Add {
@@ -199,19 +204,34 @@ impl Display for WorkColumn {
 
 #[derive(Debug, Default, Clone, Args)]
 pub struct WorkDetails {
-    /// A list of tags to associate with the work.
+    /// A list of tags to associate with the work
     pub tags: Vec<String>,
-    /// The title of the work.
+    /// The title of the work
     #[arg(short, long)]
     pub title: Option<String>,
-    /// The original author of the work.
+    /// The original author of the work
     #[arg(short, long)]
     pub author: Option<AuthorQuery>,
-    /// The url to associate with the work.
+    /// The url to associate with the work
     #[arg(short, long)]
     pub url: Option<Url>,
-    /// The caption associated with the work.
+    /// The caption associated with the work
     #[arg(long)]
+    pub caption: Option<String>,
+}
+
+#[derive(Debug, Default, Clone, Args)]
+pub struct BulkWorkDetails {
+    /// A list of tags to associate with the works
+    pub tags: Vec<String>,
+    /// The title of the works
+    #[arg(short, long)]
+    pub title: Option<String>,
+    /// The original author of the works
+    #[arg(short, long)]
+    pub author: Option<AuthorQuery>,
+    /// The caption associated with the works
+    #[arg(short, long)]
     pub caption: Option<String>,
 }
 
@@ -231,6 +251,25 @@ impl From<WorkDetails> for RecordDetails {
             author,
             url,
             caption,
+        }
+    }
+}
+
+impl From<BulkWorkDetails> for RecordDetails {
+    fn from(
+        BulkWorkDetails {
+            tags,
+            title,
+            author,
+            caption,
+        }: BulkWorkDetails,
+    ) -> Self {
+        Self {
+            title,
+            url: None,
+            author,
+            caption,
+            tags,
         }
     }
 }

@@ -1,30 +1,22 @@
 use std::{
-    cell::Cell,
     fs,
-    io::{stdin, stdout, Write},
     path::{Path, PathBuf},
     process::ExitCode,
-    str::FromStr,
     time::Duration,
 };
 
-use chronicle::{
-    models::{AuthorId, Work, WorkId},
-    record::Record,
-    search::Query,
-};
+use chronicle::{models::Work, record::Record, search::Query};
 use console::style;
 use dialoguer::Input;
-use indicatif::{BinaryBytes, ProgressBar, ProgressStyle};
-use tracing::info;
+use indicatif::{BinaryBytes, ProgressBar};
 use uuid::Uuid;
 
 use crate::{
     args::{WorkColumn, WorkCommand, WorkDetails, WorkDisplayOptions},
     get_chronicle,
     table::Table,
-    utils::{format_hash, limit_len},
-    write_failure, write_success, ERROR_STYLE, PREFIX_STYLE, SPINNER_STYLE, TERMINAL,
+    utils::format_hash,
+    write_failure, write_success, PREFIX_STYLE, SPINNER_STYLE, TERMINAL,
 };
 
 pub async fn work_command(command: &WorkCommand) -> anyhow::Result<ExitCode> {
@@ -58,12 +50,9 @@ pub async fn work_import(source: &url::Url, details: &WorkDetails) -> anyhow::Re
     spinner.set_prefix(PREFIX_STYLE.apply_to("Importing").to_string());
     spinner.set_message(source.to_string());
 
-    let works = Work::import_works_from_url(
-        get_chronicle().await,
-        &source.to_string(),
-        Some(details.clone().into()),
-    )
-    .await;
+    let works =
+        Work::import_works_from_url(get_chronicle().await, source, Some(&details.clone().into()))
+            .await;
 
     spinner.finish_and_clear();
 
