@@ -1,6 +1,7 @@
 CREATE TABLE "works" (
     "path" TEXT NOT NULL UNIQUE,
     "work_id" INTEGER NOT NULL,
+    "size" INTEGER NOT NULL,
     "title" TEXT,
     "url" TEXT,
     "caption" TEXT,

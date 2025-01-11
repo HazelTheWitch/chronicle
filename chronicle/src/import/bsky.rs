@@ -152,6 +152,7 @@ impl Service for Bsky {
                     records.push(Record {
                         path: PathBuf::from(file_name),
                         hash: bytemuck::cast(crc32fast::hash(&data)),
+                        size: data.len(),
                         details: details.clone(),
                     });
                 }

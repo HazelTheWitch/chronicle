@@ -154,13 +154,14 @@ impl Work {
             None
         };
 
-        let work: Work = sqlx::query_as("INSERT INTO works(path, url, author_id, title, caption, hash) VALUES (?, ?, ?, ?, ?, ?) RETURNING *;")
+        let work: Work = sqlx::query_as("INSERT INTO works(path, url, author_id, title, caption, hash, size) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING *;")
             .bind(&record.path.to_string_lossy())
             .bind(&record.details.url.as_ref().map(|url| url.to_string()))
             .bind(&author_id)
             .bind(&record.details.title)
             .bind(&record.details.caption)
             .bind(&record.hash)
+            .bind(record.size as u32)
             .fetch_one(&chronicle.pool)
             .await?;
 

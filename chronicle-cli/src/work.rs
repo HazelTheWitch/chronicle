@@ -14,7 +14,8 @@ use chronicle::{
     search::Query,
 };
 use console::style;
-use indicatif::{ProgressBar, ProgressStyle};
+use dialoguer::Input;
+use indicatif::{BinaryBytes, ProgressBar, ProgressStyle};
 use tracing::info;
 use uuid::Uuid;
 
@@ -37,11 +38,9 @@ pub async fn work_command(command: &WorkCommand) -> anyhow::Result<ExitCode> {
             let query = if let Some(query) = query {
                 query
             } else {
-                let mut line = String::new();
-
-                stdin().read_line(&mut line);
-
-                &Query::from_str(&line)?
+                &Input::<Query>::new()
+                    .with_prompt("Enter your query")
+                    .interact_text()?
             };
 
             work_search(query, display_options).await
@@ -128,6 +127,9 @@ pub fn display_work(
             }
             WorkColumn::Url => {
                 table.push_cell(work.url.as_ref().map(|c| c.clone()).unwrap_or_default())?;
+            }
+            WorkColumn::Size => {
+                table.push_cell(&format!("{}", BinaryBytes(work.size)))?;
             }
         }
     }

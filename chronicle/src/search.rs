@@ -98,6 +98,33 @@ impl FromStr for Query {
     }
 }
 
+impl Display for Query {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Query::Term(query_term) => write!(f, "{query_term}"),
+            Query::Not(query) => write!(f, "-{query}"),
+            Query::And(terms) => write!(
+                f,
+                "({})",
+                terms
+                    .iter()
+                    .map(|term| term.to_string())
+                    .collect::<Vec<String>>()
+                    .join(" ")
+            ),
+            Query::Or(terms) => write!(
+                f,
+                "({})",
+                terms
+                    .iter()
+                    .map(|term| term.to_string())
+                    .collect::<Vec<String>>()
+                    .join(", ")
+            ),
+        }
+    }
+}
+
 impl Query {
     fn table_name(&self) -> String {
         format!("t{hash:X}", hash = hash_t(self))

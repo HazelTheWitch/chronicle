@@ -60,6 +60,13 @@ impl Chronicle {
 
         config.expand_paths()?;
 
+        if !fs::exists(&config.database_path)? {
+            fs::OpenOptions::new()
+                .write(true)
+                .create(true)
+                .open(&config.database_path)?;
+        }
+
         debug!("Loaded config: {config:?}");
 
         let database_url = format!(
@@ -75,20 +82,6 @@ impl Chronicle {
             pool,
             config_path: path,
             config,
-        })
-    }
-
-    pub fn record_from_path(&self, path: impl Into<PathBuf>) -> Result<Record, Error> {
-        let path = path.into();
-
-        let hash = bytemuck::cast(crc32fast::hash(&fs::read(
-            &self.config.data_path.join(&path),
-        )?));
-
-        Ok(Record {
-            path,
-            hash,
-            details: Default::default(),
         })
     }
 }

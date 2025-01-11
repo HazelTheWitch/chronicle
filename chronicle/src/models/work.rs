@@ -6,6 +6,7 @@ use super::author::AuthorId;
 pub struct Work {
     pub path: String,
     pub work_id: WorkId,
+    pub size: u64,
     pub title: Option<String>,
     pub author_id: Option<AuthorId>,
     pub caption: Option<String>,

@@ -6,6 +6,7 @@ use crate::{author::AuthorQuery, Chronicle};
 
 pub struct Record {
     pub path: PathBuf,
+    pub size: usize,
     pub hash: i32,
     pub details: RecordDetails,
 }
@@ -16,10 +17,13 @@ impl Record {
         path: PathBuf,
         details: RecordDetails,
     ) -> Result<Self, io::Error> {
-        let hash = crc32fast::hash(&fs::read(&chronicle.config.data_path.join(&path))?);
+        let data = fs::read(&chronicle.config.data_path.join(&path))?;
+        let hash = crc32fast::hash(&data);
+        let size = data.len();
 
         Ok(Self {
             path,
+            size,
             hash: cast(hash),
             details,
         })

@@ -152,7 +152,7 @@ pub enum ServiceCommand {
 #[derive(Debug, Args)]
 pub struct WorkDisplayOptions {
     /// Specifies which columns to display
-    #[arg(short, long, value_enum, default_values_t = vec![WorkColumn::Id, WorkColumn::Path])]
+    #[arg(short, long, value_enum, default_values_t = vec![WorkColumn::Id, WorkColumn::Size, WorkColumn::Url])]
     pub columns: Vec<WorkColumn>,
 }
 
@@ -179,6 +179,7 @@ pub enum WorkColumn {
     AuthorId,
     Caption,
     Url,
+    Size,
 }
 
 impl Display for WorkColumn {
@@ -191,6 +192,7 @@ impl Display for WorkColumn {
             WorkColumn::AuthorId => write!(f, "AUTHOR_ID"),
             WorkColumn::Caption => write!(f, "CAPTION"),
             WorkColumn::Url => write!(f, "URL"),
+            WorkColumn::Size => write!(f, "SIZE"),
         }
     }
 }

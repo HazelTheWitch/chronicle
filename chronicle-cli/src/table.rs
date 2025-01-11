@@ -53,6 +53,11 @@ impl WorkColumn {
                 grow: true,
                 min_size: 12,
             },
+            WorkColumn::Size => ColumnBehavior {
+                size: 12,
+                grow: false,
+                min_size: 12,
+            },
         }
     }
 }
