@@ -26,6 +26,7 @@ use tracing::{error, warn};
 use uuid::Uuid;
 
 use crate::{
+    author::AuthorQuery,
     record::{Record, RecordDetails},
     ServiceError,
 };
@@ -129,7 +130,7 @@ impl Service for Bsky {
         let details = RecordDetails {
             tags: Vec::new(),
             title: None,
-            author: Some(author.to_string()),
+            author: Some(AuthorQuery::Name(author.to_string())),
             url: Some(url),
             caption: Some(caption),
         };

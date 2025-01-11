@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{fmt::Display, path::PathBuf};
 
 use chronicle::{author::AuthorQuery, record::RecordDetails, search::Query, tag::TagExpression};
 use clap::{Args, Parser, Subcommand, ValueEnum};
@@ -29,8 +29,12 @@ pub enum Command {
     },
     /// Operations with tags
     Tag {
-        #[command(subcommand)]
-        command: TagCommand,
+        /// The tagging expression to execute
+        ///
+        /// This should take the form of
+        ///
+        /// [<search query>/]tag1/(tag2,tag3)/tag4
+        expression: TagExpression,
     },
     /// Operations with authors
     #[command(alias = "artist")]
@@ -42,6 +46,40 @@ pub enum Command {
     Service {
         #[command(subcommand)]
         command: ServiceCommand,
+    },
+    /// Bulk operations
+    Bulk {
+        #[command(subcommand)]
+        command: BulkCommand,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum BulkCommand {
+    /// Import a list of urls
+    Import {
+        /// The path to a file containing a list of urls, if omitted the list is read from stdin
+        ///
+        /// The format of each line of this file should be
+        ///
+        /// <url> [same options as `chronicle work import`]
+        path: Option<PathBuf>,
+    },
+    /// Import a list of paths as works
+    Add {
+        /// The path to a file containing a list of paths, if ommitted the list is read from stdin
+        ///
+        /// The format of each line of this file should be
+        ///
+        /// <path> [same options as `chronicle work add`]
+        path: Option<PathBuf>,
+    },
+    /// Performs a series of tag operations
+    Tag {
+        /// The path to a file containing a list of tag operations
+        ///
+        /// The format of each line of this file should be the same as the input for `chronicle tag`
+        path: Option<PathBuf>,
     },
 }
 
@@ -76,26 +114,6 @@ pub enum WorkCommand {
 }
 
 #[derive(Debug, Subcommand)]
-pub enum TagCommand {
-    /// Tag a set of works with tags
-    Work {
-        /// The search query to tag
-        query: String,
-        /// The tags to apply to each work in the query
-        tags: Vec<String>,
-    },
-    /// Tag a set of tags
-    Meta {
-        /// The expression to perform tagging with, if omitted the expression is read from stdin
-        ///
-        /// Examples:
-        /// - subtag/supertag
-        /// - subtag/(sibling,tags)/supertag
-        expression: Option<TagExpression>,
-    },
-}
-
-#[derive(Debug, Subcommand)]
 pub enum AuthorCommand {
     /// List all authors
     List {
@@ -111,7 +129,7 @@ pub enum AuthorCommand {
         /// The alias to assgn to the author
         alias: String,
     },
-    /// Assig a url to an author
+    /// Assign a url to an author
     AddUrl {
         /// The author to assign the url to
         ///
@@ -160,6 +178,21 @@ pub enum WorkColumn {
     Title,
     AuthorId,
     Caption,
+    Url,
+}
+
+impl Display for WorkColumn {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            WorkColumn::Id => write!(f, "ID"),
+            WorkColumn::Path => write!(f, "PATH"),
+            WorkColumn::Hash => write!(f, "HASH"),
+            WorkColumn::Title => write!(f, "TITLE"),
+            WorkColumn::AuthorId => write!(f, "AUTHOR_ID"),
+            WorkColumn::Caption => write!(f, "CAPTION"),
+            WorkColumn::Url => write!(f, "URL"),
+        }
+    }
 }
 
 #[derive(Debug, Default, Clone, Args)]
@@ -171,7 +204,7 @@ pub struct WorkDetails {
     pub title: Option<String>,
     /// The original author of the work.
     #[arg(short, long)]
-    pub author: Option<String>,
+    pub author: Option<AuthorQuery>,
     /// The url to associate with the work.
     #[arg(short, long)]
     pub url: Option<Url>,

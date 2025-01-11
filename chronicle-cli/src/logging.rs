@@ -1,7 +1,8 @@
 use std::{
     env,
     fs::{self, File},
-    io::BufWriter,
+    io::{stdout, BufWriter},
+    sync::Arc,
 };
 
 use tracing_error::ErrorLayer;

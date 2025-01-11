@@ -1,7 +1,7 @@
 use std::{convert::Infallible, str::FromStr};
 
 use crate::{
-    models::{Author, AuthorName},
+    models::{Author, AuthorId, AuthorName},
     Chronicle,
 };
 
@@ -41,9 +41,19 @@ impl Author {
         Ok(author)
     }
 
+    pub async fn get_by_id(
+        chronicle: &Chronicle,
+        author_id: &AuthorId,
+    ) -> Result<Option<Author>, crate::Error> {
+        Ok(sqlx::query_as("SELECT * FROM authors WHERE author_id = ?;")
+            .bind(&author_id)
+            .fetch_optional(&chronicle.pool)
+            .await?)
+    }
+
     pub async fn get(
         chronicle: &Chronicle,
-        query: AuthorQuery,
+        query: &AuthorQuery,
     ) -> Result<Vec<Author>, crate::Error> {
         Ok(match query {
             AuthorQuery::Name(name) => {

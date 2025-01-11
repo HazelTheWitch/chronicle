@@ -4,10 +4,11 @@ use std::{collections::HashMap, sync::Arc};
 
 use async_trait::async_trait;
 use tokio::sync::RwLock;
+use tracing::info;
 use url::Url;
 
 use crate::{
-    models::{AuthorId, Work},
+    models::{Author, Work},
     record::{Record, RecordDetails},
     Chronicle,
 };
@@ -72,7 +73,6 @@ impl Work {
         chronicle: &Chronicle,
         url: &str,
         provided_details: Option<RecordDetails>,
-        author_id: Option<AuthorId>,
     ) -> Result<Vec<Work>, crate::Error> {
         let url = Url::parse(url)?;
 
@@ -128,7 +128,7 @@ impl Work {
         let tx = chronicle.pool.begin().await?;
 
         for record in records {
-            works.push(Self::create_from_record(&chronicle, &record, author_id).await?);
+            works.push(Self::create_from_record(&chronicle, &record).await?);
         }
 
         tx.commit().await?;
@@ -138,9 +138,21 @@ impl Work {
     pub async fn create_from_record(
         chronicle: &Chronicle,
         record: &Record,
-        author_id: Option<AuthorId>,
     ) -> Result<Work, crate::Error> {
         let tx = chronicle.pool.begin().await?;
+
+        let author_id = if let Some(author_query) = &record.details.author {
+            info!("author_id missing, attempting to get author via details");
+            let mut authors = Author::get(&chronicle, author_query).await?;
+
+            if authors.len() == 1 {
+                Some(authors.remove(0).author_id)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
 
         let work: Work = sqlx::query_as("INSERT INTO works(path, url, author_id, title, caption, hash) VALUES (?, ?, ?, ?, ?, ?) RETURNING *;")
             .bind(&record.path.to_string_lossy())

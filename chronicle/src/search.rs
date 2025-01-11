@@ -11,7 +11,7 @@ use builder::SearchQueryBuilder;
 use crate::{models::Work, parse::ParseError, utils::hash_t, Chronicle};
 
 pub mod builder;
-mod parse;
+pub(crate) mod parse;
 
 // TODO: Add Id query term
 #[derive(PartialEq, Eq, Debug, Clone)]

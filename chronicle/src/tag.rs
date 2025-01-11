@@ -8,19 +8,23 @@ use parse::tag_expression;
 use crate::{
     models::{Tag, Work},
     parse::ParseError,
+    search::Query,
     Chronicle,
 };
 
-#[derive(Debug, Clone)]
+#[derive(PartialEq, Eq, Debug, Clone)]
 pub struct TagExpression {
+    pub query: Option<Query>,
     pub hierarchy: Vec<Vec<String>>,
 }
 
 impl TagExpression {
     pub fn new(
+        query: Option<Query>,
         hierarchy: impl IntoIterator<Item = impl IntoIterator<Item = impl Into<String>>>,
     ) -> Self {
         Self {
+            query,
             hierarchy: hierarchy
                 .into_iter()
                 .map(|i| i.into_iter().map(|s| s.into()).collect())
@@ -33,13 +37,13 @@ impl FromStr for TagExpression {
     type Err = ParseError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let (i, hierarchy) = tag_expression(s)?;
+        let (i, expression) = tag_expression(s)?;
 
         if !i.is_empty() {
             return Err(ParseError::ParserDidNotFinish(i.to_owned()));
         }
 
-        Ok(Self::new(hierarchy))
+        Ok(expression)
     }
 }
 

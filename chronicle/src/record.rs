@@ -2,7 +2,7 @@ use std::{fs, io, path::PathBuf};
 
 use bytemuck::cast;
 
-use crate::Chronicle;
+use crate::{author::AuthorQuery, Chronicle};
 
 pub struct Record {
     pub path: PathBuf,
@@ -30,7 +30,7 @@ impl Record {
 pub struct RecordDetails {
     pub title: Option<String>,
     pub url: Option<url::Url>,
-    pub author: Option<String>,
+    pub author: Option<AuthorQuery>,
     pub caption: Option<String>,
     pub tags: Vec<String>,
 }
