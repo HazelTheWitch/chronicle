@@ -11,7 +11,7 @@ use chronicle::{
     tag::{DiscriminatedTag, TagExpression, TagPart},
 };
 use console::style;
-use dialoguer::Select;
+use dialoguer::{Input, Select};
 use indicatif::ProgressBar;
 use itertools::Itertools;
 
@@ -166,6 +166,18 @@ pub async fn display_tag_info(tag: &DiscriminatedTag) -> anyhow::Result<ExitCode
 pub async fn execute_tag_expression(expression: &TagExpression) -> anyhow::Result<ExitCode> {
     let chronicle = get_chronicle().await;
 
+    let mut tx = chronicle.begin().await?;
+
+    for tag in expression.hierarchy.iter().flatten() {
+        if tag.discriminator.is_some() {
+            if let Some(mut other) = Tag::try_get_discriminated(&mut tx, &tag.name, None).await? {
+                let other_discriminant = Input::<TagPart>::new().with_prompt(format!("Tag '{other}' already exists and is not discriminated, please provide a discriminator for it")).interact()?;
+
+                other.discriminate(&mut tx, &other_discriminant.0).await?;
+            }
+        }
+    }
+
     let spinner = ProgressBar::new_spinner().with_style(SPINNER_STYLE.clone());
     spinner.enable_steady_tick(Duration::from_millis(100));
     spinner.set_prefix(PREFIX_STYLE.apply_to("Tagging").to_string());
@@ -174,7 +186,6 @@ pub async fn execute_tag_expression(expression: &TagExpression) -> anyhow::Resul
         expression.approximate_connections()
     ));
 
-    let mut tx = chronicle.begin().await?;
     let total = expression.execute(&mut tx).await?;
 
     tx.commit().await?;
