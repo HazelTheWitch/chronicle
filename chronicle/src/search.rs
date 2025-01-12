@@ -7,7 +7,7 @@ use std::{
 };
 
 use builder::SearchQueryBuilder;
-use sqlx::{Sqlite, Transaction};
+use sqlx::{Execute, Sqlite, Transaction};
 
 use crate::{models::Work, parse::ParseError, tag::DiscriminatedTag, utils::hash_t, Chronicle};
 
@@ -271,7 +271,7 @@ impl Work {
         let table = builder.push_query_table(query);
 
         builder.query_builder.push(format_args!(
-            "SELECT * FROM works WHERE work_id IN (SELECT work_id FROM {table});"
+            "SELECT * FROM works WHERE work_id IN (SELECT work_id FROM {table});\n"
         ));
 
         builder.drop_tables();

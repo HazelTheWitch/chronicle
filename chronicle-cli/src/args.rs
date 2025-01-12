@@ -4,7 +4,7 @@ use chronicle::{
     author::AuthorQuery,
     record::RecordDetails,
     search::Query,
-    tag::{DiscriminatedTag, TagExpression},
+    tag::{DiscriminatedTag, TagExpression, TagPart},
 };
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use tracing::Level;
@@ -34,12 +34,8 @@ pub enum Command {
     },
     /// Operations with tags
     Tag {
-        /// The tagging expression to execute
-        ///
-        /// This should take the form of
-        ///
-        /// [<search query>/]tag1/(tag2,tag3)/tag4
-        expression: TagExpression,
+        #[command(subcommand)]
+        command: TagCommand,
     },
     /// Operations with authors
     #[command(alias = "artist")]
@@ -59,6 +55,31 @@ pub enum Command {
         tasks: usize,
         #[command(subcommand)]
         command: BulkCommand,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum TagCommand {
+    /// Apply tags to works and other tags
+    Apply {
+        /// The tagging expression to execute
+        ///
+        /// This should take the form of
+        ///
+        /// [<search query>/]tag1/(tag2,tag3)/tag4
+        expression: TagExpression,
+    },
+    /// Get information on individual tags
+    Info {
+        /// The tag to get information on
+        tag: DiscriminatedTag,
+    },
+    /// Add a discriminator to an existing tag
+    Discriminate {
+        /// The tag name to discriminate
+        tag: TagPart,
+        /// The discriminator to apply to the tag
+        discriminator: TagPart,
     },
 }
 

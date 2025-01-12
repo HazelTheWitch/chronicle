@@ -2,15 +2,11 @@ use std::{
     borrow::Cow,
     fmt::Display,
     io::{self, Write},
-    iter::repeat,
 };
 
-use console::{pad_str, truncate_str, Alignment, Term};
+use console::{pad_str, Alignment, Term};
 
-use crate::{
-    args::{AuthorColumn, WorkColumn},
-    fallible,
-};
+use crate::args::{AuthorColumn, WorkColumn};
 
 pub struct ColumnBehavior {
     pub size: usize,
@@ -149,13 +145,25 @@ impl<'t> Table<'t> {
         }
     }
 
-    pub fn push_cell(&mut self, item: impl Display) -> io::Result<()> {
+    pub fn push_left(&mut self, item: impl Display) -> io::Result<()> {
+        self.push_cell(item, Alignment::Left)
+    }
+
+    pub fn push_center(&mut self, item: impl Display) -> io::Result<()> {
+        self.push_cell(item, Alignment::Center)
+    }
+
+    pub fn push_right(&mut self, item: impl Display) -> io::Result<()> {
+        self.push_cell(item, Alignment::Right)
+    }
+
+    pub fn push_cell(&mut self, item: impl Display, alignment: Alignment) -> io::Result<()> {
         let full_string = item.to_string().replace("\n", " ");
 
         let width = self.column_widths[self.current_column];
 
         let string = if self.term.is_term() {
-            pad_str(&full_string, width, Alignment::Left, Some("..."))
+            pad_str(&full_string, width, alignment, Some("..."))
         } else {
             Cow::Borrowed(full_string.as_str())
         };

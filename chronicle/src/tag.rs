@@ -1,15 +1,14 @@
 pub mod parse;
 
-use std::{fmt::Display, str::FromStr};
+use std::{fmt::Display, ops::Deref, str::FromStr};
 
-use parse::{discriminated_tag, tag_expression, ParsedTag};
+use parse::{discriminated_tag, tag_expression, tag_part, ParsedTag};
 use sqlx::{Acquire, Sqlite, Transaction};
 
 use crate::{
-    models::{ModelKind, Tag, Work},
-    parse::ParseError,
+    models::{ModelKind, Tag, TagId, Work},
+    parse::{string, ParseError},
     search::Query,
-    Chronicle,
 };
 
 #[derive(PartialEq, Eq, Debug, Clone, Hash)]
@@ -43,6 +42,29 @@ impl FromStr for DiscriminatedTag {
         }
 
         Ok(parsed_tag.into())
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct TagPart(pub String);
+
+impl Display for TagPart {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl FromStr for TagPart {
+    type Err = ParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let (left, parsed_tag) = tag_part(s)?;
+
+        if !left.is_empty() {
+            return Err(ParseError::ParserDidNotFinish(left.to_string()));
+        }
+
+        Ok(Self(parsed_tag.to_string()))
     }
 }
 
@@ -238,6 +260,13 @@ impl Work {
     }
 }
 
+#[derive(sqlx::FromRow)]
+pub struct DepthTag {
+    pub depth: i32,
+    #[sqlx(flatten)]
+    pub tag: Tag,
+}
+
 impl Tag {
     pub async fn try_get_discriminated(
         tx: &mut Transaction<'_, Sqlite>,
@@ -260,6 +289,22 @@ impl Tag {
                     .await?,
             )
         }
+    }
+
+    pub async fn discriminate(
+        &mut self,
+        tx: &mut Transaction<'_, Sqlite>,
+        discriminator: &str,
+    ) -> Result<(), crate::Error> {
+        sqlx::query("UPDATE tags SET discriminator = ? WHERE id = ?;")
+            .bind(discriminator)
+            .bind(&self.id)
+            .execute(&mut **tx)
+            .await?;
+
+        self.discriminator = Some(discriminator.to_string());
+
+        Ok(())
     }
 
     pub async fn get_discriminated(
@@ -323,5 +368,41 @@ impl Tag {
         .fetch_optional(&mut **tx)
         .await?
         .is_some())
+    }
+
+    pub async fn descendants(
+        &self,
+        tx: &mut Transaction<'_, Sqlite>,
+    ) -> Result<Vec<DepthTag>, crate::Error> {
+        Ok(sqlx::query_as(
+            r#"
+            WITH RECURSIVE descendants(tag_id, depth) AS (
+                SELECT ?, 0
+                UNION
+                SELECT target, descendants.depth + 1 FROM meta_tags JOIN descendants ON meta_tags.tag = descendants.tag_id
+            ) SELECT tags.*, descendants.depth FROM tags JOIN descendants ON tags.id = descendants.tag_id;
+        "#,
+        )
+        .bind(&self.id)
+        .fetch_all(&mut **tx)
+        .await?)
+    }
+
+    pub async fn ancestors(
+        &self,
+        tx: &mut Transaction<'_, Sqlite>,
+    ) -> Result<Vec<DepthTag>, crate::Error> {
+        Ok(sqlx::query_as(
+            r#"
+            WITH RECURSIVE ancestors(tag_id, depth) AS (
+                SELECT ?, 0
+                UNION
+                SELECT tag, ancestors.depth - 1 FROM meta_tags JOIN ancestors ON meta_tags.target = ancestors.tag_id
+            ) SELECT tags.*, ancestors.depth FROM tags JOIN ancestors ON tags.id = ancestors.tag_id;
+        "#,
+        )
+        .bind(&self.id)
+        .fetch_all(&mut **tx)
+        .await?)
     }
 }

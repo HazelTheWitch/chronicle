@@ -7,15 +7,15 @@ impl QueryTerm {
         match self {
             QueryTerm::Tag(tag) => {
                 if let Some(discriminator) = &tag.discriminator {
-                    b.push("WITH RECURSIVE implied(tag_id) AS (SELECT (SELECT id FROM tags WHERE name = ")
+                    b.push("WITH RECURSIVE implied(tag_id) AS (SELECT id FROM tags WHERE name = ")
                     .push_bind(&tag.name)
                     .push(" AND discriminator = ")
                     .push_bind(discriminator)
-                    .push(") UNION SELECT target FROM meta_tags JOIN implied ON meta_tags.tag = implied.tag_id) SELECT work_id FROM works WHERE work_id IN (SELECT work_id FROM work_tags JOIN implied ON work_tags.tag = implied.tag_id)");
+                    .push(" UNION SELECT target FROM meta_tags JOIN implied ON meta_tags.tag = implied.tag_id) SELECT work_id FROM works WHERE work_id IN (SELECT work_id FROM work_tags JOIN implied ON work_tags.tag = implied.tag_id)");
                 } else {
-                    b.push("WITH RECURSIVE implied(tag_id) AS (SELECT (SELECT id FROM tags WHERE name = ")
+                    b.push("WITH RECURSIVE implied(tag_id) AS (SELECT id FROM tags WHERE name = ")
                     .push_bind(&tag.name)
-                    .push(") UNION SELECT target FROM meta_tags JOIN implied ON meta_tags.tag = implied.tag_id) SELECT work_id FROM works WHERE work_id IN (SELECT work_id FROM work_tags JOIN implied ON work_tags.tag = implied.tag_id)");
+                    .push(" UNION SELECT target FROM meta_tags JOIN implied ON meta_tags.tag = implied.tag_id) SELECT work_id FROM works WHERE work_id IN (SELECT work_id FROM work_tags JOIN implied ON work_tags.tag = implied.tag_id)");
                 }
             }
             QueryTerm::Title(title) => {

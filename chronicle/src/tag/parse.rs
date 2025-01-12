@@ -7,7 +7,7 @@ use nom::{
 };
 
 use crate::{
-    parse::{string, ParseResult},
+    parse::{identifier, string, ParseResult},
     search::parse::query,
 };
 
@@ -18,16 +18,20 @@ pub struct ParsedTag<'s> {
     pub discriminator: Option<&'s str>,
 }
 
+pub fn tag_part(i: &str) -> ParseResult<&str> {
+    identifier(i)
+}
+
 pub fn discriminated_tag(i: &str) -> ParseResult<ParsedTag> {
     alt((
         map(
-            separated_pair(string, char('#'), string),
+            separated_pair(tag_part, char('#'), tag_part),
             |(name, discriminator)| ParsedTag {
                 name,
                 discriminator: Some(discriminator),
             },
         ),
-        map(string, |name| ParsedTag {
+        map(tag_part, |name| ParsedTag {
             name,
             discriminator: None,
         }),

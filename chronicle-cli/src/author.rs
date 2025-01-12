@@ -71,7 +71,7 @@ pub fn display_author_header(
     options: &AuthorDisplayOptions,
 ) -> anyhow::Result<()> {
     for column in &options.columns {
-        table.push_cell(style(column.to_string()).bold())?;
+        table.push_left(style(column.to_string()).bold())?;
     }
 
     Ok(())
@@ -103,23 +103,23 @@ async fn list_authors(options: &AuthorDisplayOptions) -> anyhow::Result<ExitCode
                 match column {
                     AuthorColumn::Id => {
                         if i == 0 {
-                            table.push_cell(author.author_id)?;
+                            table.push_left(author.author_id)?;
                         } else {
-                            table.push_cell("")?;
+                            table.push_left("")?;
                         }
                     }
                     AuthorColumn::Aliases => {
                         if let Some(alias) = aliases.get(i) {
-                            table.push_cell(&alias.name)?;
+                            table.push_left(&alias.name)?;
                         } else {
-                            table.push_cell("")?;
+                            table.push_left("")?;
                         }
                     }
                     AuthorColumn::Urls => {
                         if let Some(url) = urls.get(i) {
-                            table.push_cell(&url.url)?;
+                            table.push_left(&url.url)?;
                         } else {
-                            table.push_cell("")?;
+                            table.push_left("")?;
                         }
                     }
                 }

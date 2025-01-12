@@ -56,6 +56,8 @@ pub async fn work_import(source: &url::Url, details: &WorkDetails) -> anyhow::Re
         Work::import_works_from_url(chronicle, &mut tx, source, Some(&details.clone().into()))
             .await;
 
+    tx.commit().await?;
+
     spinner.finish_and_clear();
 
     match works {
@@ -82,7 +84,7 @@ pub async fn work_import(source: &url::Url, details: &WorkDetails) -> anyhow::Re
 
 pub fn display_work_header(table: &mut Table, options: &WorkDisplayOptions) -> anyhow::Result<()> {
     for column in &options.columns {
-        table.push_cell(style(column.to_string()).bold())?;
+        table.push_left(style(column.to_string()).bold())?;
     }
 
     Ok(())
@@ -96,28 +98,28 @@ pub fn display_work(
     for column in &options.columns {
         match column {
             WorkColumn::Id => {
-                table.push_cell(work.work_id)?;
+                table.push_left(work.work_id)?;
             }
             WorkColumn::Path => {
-                table.push_cell(&work.path)?;
+                table.push_left(&work.path)?;
             }
             WorkColumn::Hash => {
-                table.push_cell(format_hash(work.hash))?;
+                table.push_left(format_hash(work.hash))?;
             }
             WorkColumn::Title => {
-                table.push_cell(work.title.as_ref().map(|t| t.clone()).unwrap_or_default())?;
+                table.push_left(work.title.as_ref().map(|t| t.clone()).unwrap_or_default())?;
             }
             WorkColumn::AuthorId => {
-                table.push_cell(work.author_id.map(|id| id.to_string()).unwrap_or_default())?;
+                table.push_left(work.author_id.map(|id| id.to_string()).unwrap_or_default())?;
             }
             WorkColumn::Caption => {
-                table.push_cell(work.caption.as_ref().map(|c| c.clone()).unwrap_or_default())?;
+                table.push_left(work.caption.as_ref().map(|c| c.clone()).unwrap_or_default())?;
             }
             WorkColumn::Url => {
-                table.push_cell(work.url.as_ref().map(|c| c.clone()).unwrap_or_default())?;
+                table.push_left(work.url.as_ref().map(|c| c.clone()).unwrap_or_default())?;
             }
             WorkColumn::Size => {
-                table.push_cell(&format!("{}", BinaryBytes(work.size)))?;
+                table.push_left(&format!("{}", BinaryBytes(work.size)))?;
             }
         }
     }

@@ -19,7 +19,7 @@ use directories::ProjectDirs;
 use indicatif::ProgressStyle;
 use lazy_static::lazy_static;
 use logging::initialize_logging;
-use tag::execute_tag_expression;
+use tag::{execute_tag_expression, tag_command};
 use tokio::sync::OnceCell;
 use tracing::error;
 use work::work_command;
@@ -75,7 +75,7 @@ async fn fallible() -> anyhow::Result<ExitCode> {
 
     match &ARGUMENTS.command {
         Command::Work { command } => work_command(command).await,
-        Command::Tag { expression } => execute_tag_expression(expression).await,
+        Command::Tag { command } => tag_command(command).await,
         Command::Author { command } => author_command(command).await,
         Command::Service { command } => match command {
             ServiceCommand::Login { service } => {
@@ -166,7 +166,7 @@ async fn main() -> anyhow::Result<ExitCode> {
     let result = fallible().await;
 
     if result.is_err() {
-        write_failure(&format!("Encountered an error which could not be recovered from, please report this at https://github.com/HazelTheWitch/chronicle/issues/new"));
+        write_failure(&format!("Encountered an error which could not be recovered from, please report this at https://github.com/HazelTheWitch/chronicle/issues/new"))?;
     }
 
     result
