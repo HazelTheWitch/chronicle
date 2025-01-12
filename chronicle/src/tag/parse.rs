@@ -13,10 +13,35 @@ use crate::{
 
 use super::TagExpression;
 
-fn tag_sequence(i: &str) -> ParseResult<Vec<&str>> {
+pub struct ParsedTag<'s> {
+    pub name: &'s str,
+    pub discriminator: Option<&'s str>,
+}
+
+pub fn discriminated_tag(i: &str) -> ParseResult<ParsedTag> {
     alt((
-        map(string, |tag| vec![tag]),
-        delimited(char('('), separated_list1(char(','), string), char(')')),
+        map(
+            separated_pair(string, char('#'), string),
+            |(name, discriminator)| ParsedTag {
+                name,
+                discriminator: Some(discriminator),
+            },
+        ),
+        map(string, |name| ParsedTag {
+            name,
+            discriminator: None,
+        }),
+    ))(i)
+}
+
+fn tag_sequence(i: &str) -> ParseResult<Vec<ParsedTag>> {
+    alt((
+        map(discriminated_tag, |tag| vec![tag]),
+        delimited(
+            char('('),
+            separated_list1(char(','), discriminated_tag),
+            char(')'),
+        ),
     ))(i)
 }
 

@@ -25,9 +25,10 @@ pub async fn author_command(command: &AuthorCommand) -> anyhow::Result<ExitCode>
 
 async fn add_url_author(query: &AuthorQuery, url: &Url) -> anyhow::Result<ExitCode> {
     let chronicle = get_chronicle().await;
-    let author = &Author::get(&chronicle, query).await?[0];
+    let mut tx = chronicle.begin().await?;
+    let author = &Author::get(&mut tx, query).await?[0];
 
-    author.add_url(&chronicle, url).await?;
+    author.add_url(&mut tx, url).await?;
 
     write_success(&format!("Added url {url} -> {}", author.author_id))?;
 
@@ -36,7 +37,8 @@ async fn add_url_author(query: &AuthorQuery, url: &Url) -> anyhow::Result<ExitCo
 
 async fn alias_author(query: &AuthorQuery, alias: &str) -> anyhow::Result<ExitCode> {
     let chronicle = get_chronicle().await;
-    let authors = &Author::get(&chronicle, query).await?;
+    let mut tx = chronicle.begin().await?;
+    let authors = &Author::get(&mut tx, query).await?;
 
     let author = match authors.len() {
         0 => {
@@ -57,7 +59,7 @@ async fn alias_author(query: &AuthorQuery, alias: &str) -> anyhow::Result<ExitCo
         }
     };
 
-    author.add_alias(&chronicle, alias).await?;
+    author.add_alias(&mut tx, alias).await?;
 
     write_success(&format!("Aliased {alias} -> {}", author.author_id))?;
 
@@ -77,6 +79,8 @@ pub fn display_author_header(
 async fn list_authors(options: &AuthorDisplayOptions) -> anyhow::Result<ExitCode> {
     let chronicle = get_chronicle().await;
 
+    let mut tx = chronicle.begin().await?;
+
     let mut console = TERMINAL.clone();
     let width = console.size().1 as usize;
 
@@ -88,11 +92,11 @@ async fn list_authors(options: &AuthorDisplayOptions) -> anyhow::Result<ExitCode
 
     display_author_header(&mut table, options)?;
 
-    let authors = Author::get_all(&chronicle).await?;
+    let authors = Author::get_all(&mut tx).await?;
 
     for author in authors {
-        let aliases = author.get_author_names(&chronicle).await?;
-        let urls = author.get_author_urls(&chronicle).await?;
+        let aliases = author.get_author_names(&mut tx).await?;
+        let urls = author.get_author_urls(&mut tx).await?;
 
         for i in 0..usize::max(aliases.len(), urls.len()).max(1) {
             for column in options.columns.iter() {

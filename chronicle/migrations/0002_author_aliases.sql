@@ -1,4 +1,5 @@
-ALTER TABLE "authors" RENAME TO "old_authors";
+ALTER TABLE
+    "authors" RENAME TO "old_authors";
 
 CREATE TABLE "authors" (
     "author_id" INTEGER NOT NULL,
@@ -13,10 +14,25 @@ CREATE TABLE "author_names" (
     PRIMARY KEY ("author_id", "name")
 );
 
-INSERT INTO "authors" ("author_id") SELECT "author_id" FROM "old_authors";
-INSERT INTO "author_names" ("author_id", "name") SELECT "author_id", "name" FROM "old_authors";
+INSERT INTO
+    "authors" ("author_id")
+SELECT
+    "author_id"
+FROM
+    "old_authors";
+
+INSERT INTO
+    "author_names" ("author_id", "name")
+SELECT
+    "author_id",
+    "name"
+FROM
+    "old_authors";
 
 DROP TABLE "old_authors";
 
-ALTER TABLE "authors" RENAME TO "old_authors";
-ALTER TABLE "old_authors" RENAME TO "authors";
+ALTER TABLE
+    "authors" RENAME TO "old_authors";
+
+ALTER TABLE
+    "old_authors" RENAME TO "authors";

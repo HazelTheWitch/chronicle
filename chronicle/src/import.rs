@@ -3,14 +3,14 @@ pub mod bsky;
 use std::{collections::HashMap, sync::Arc};
 
 use async_trait::async_trait;
-use sqlx::types::chrono;
+use sqlx::{types::chrono, Acquire, Sqlite, Transaction};
 use tokio::sync::RwLock;
 use tracing::info;
 use url::Url;
 
 use crate::{
     author::{self, AuthorQuery},
-    models::{Author, Work},
+    models::{Author, Tag, Work},
     record::{Record, RecordDetails},
     Chronicle,
 };
@@ -73,6 +73,7 @@ fn get_services() -> Services {
 impl Work {
     pub async fn import_works_from_url(
         chronicle: &Chronicle,
+        tx: &mut Transaction<'_, Sqlite>,
         url: &Url,
         provided_details: Option<&RecordDetails>,
     ) -> Result<Vec<Work>, crate::Error> {
@@ -125,30 +126,29 @@ impl Work {
 
         let mut works = Vec::with_capacity(records.len());
 
-        let tx = chronicle.pool.begin().await?;
+        let mut tx = tx.begin().await?;
 
         for record in records {
-            works.push(Self::create_from_record(&chronicle, &record).await?);
+            works.push(Self::create_from_record(&mut tx, &record).await?);
         }
 
         tx.commit().await?;
+
         Ok(works)
     }
 
     pub async fn create_from_record(
-        chronicle: &Chronicle,
+        tx: &mut Transaction<'_, Sqlite>,
         record: &Record,
     ) -> Result<Work, crate::Error> {
-        let tx = chronicle.pool.begin().await?;
-
         let author_id = if let Some(author_query) = &record.details.author {
-            let mut authors = Author::get(&chronicle, author_query).await?;
+            let mut authors = Author::get(tx, author_query).await?;
 
             if authors.len() == 1 {
                 Some(authors.remove(0).author_id)
             } else if authors.is_empty() {
                 if let AuthorQuery::Name(name) = author_query {
-                    let author = Author::create(&chronicle, name).await?;
+                    let author = Author::create(tx, name).await?;
 
                     Some(author.author_id)
                 } else {
@@ -169,24 +169,24 @@ impl Work {
             .bind(&record.details.caption)
             .bind(&record.hash)
             .bind(record.size as u32)
-            .fetch_one(&chronicle.pool)
+            .fetch_one(&mut **tx)
             .await?;
 
         if let Some(author_id) = author_id {
             if let Some(author_url) = &record.details.author_url {
-                let author = Author::get_by_id(&chronicle, &author_id)
+                let author = Author::get_by_id(tx, &author_id)
                     .await?
                     .expect("author id exists but not found");
 
-                author.add_url(&chronicle, author_url).await?;
+                author.add_url(tx, author_url).await?;
             }
         }
 
         for tag in record.details.tags.iter() {
-            work.tag(&chronicle, tag).await?;
+            let tag = Tag::get_discriminated_or_create(tx, &tag.name, tag.discriminator.as_deref())
+                .await?;
+            work.tag(tx, &tag).await?;
         }
-
-        tx.commit().await?;
 
         Ok(work)
     }

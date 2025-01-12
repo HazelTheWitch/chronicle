@@ -1,27 +1,73 @@
-mod builder;
-mod parse;
+pub mod parse;
 
-use std::str::FromStr;
+use std::{fmt::Display, str::FromStr};
 
-use parse::tag_expression;
+use parse::{discriminated_tag, tag_expression, ParsedTag};
+use sqlx::{Acquire, Sqlite, Transaction};
 
 use crate::{
-    models::{Tag, Work},
+    models::{ModelKind, Tag, Work},
     parse::ParseError,
     search::Query,
     Chronicle,
 };
 
+#[derive(PartialEq, Eq, Debug, Clone, Hash)]
+pub struct DiscriminatedTag {
+    pub name: String,
+    pub discriminator: Option<String>,
+}
+
+impl<'s> From<ParsedTag<'s>> for DiscriminatedTag {
+    fn from(
+        ParsedTag {
+            name,
+            discriminator,
+        }: ParsedTag,
+    ) -> Self {
+        Self {
+            name: name.to_owned(),
+            discriminator: discriminator.map(String::from),
+        }
+    }
+}
+
+impl FromStr for DiscriminatedTag {
+    type Err = ParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let (left, parsed_tag) = discriminated_tag(s)?;
+
+        if !left.is_empty() {
+            return Err(ParseError::ParserDidNotFinish(left.to_string()));
+        }
+
+        Ok(parsed_tag.into())
+    }
+}
+
+impl Display for DiscriminatedTag {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", &self.name)?;
+
+        if let Some(discriminator) = &self.discriminator {
+            write!(f, "#{discriminator}")?;
+        }
+
+        Ok(())
+    }
+}
+
 #[derive(PartialEq, Eq, Debug, Clone)]
 pub struct TagExpression {
     pub query: Option<Query>,
-    pub hierarchy: Vec<Vec<String>>,
+    pub hierarchy: Vec<Vec<DiscriminatedTag>>,
 }
 
 impl TagExpression {
     pub fn new(
         query: Option<Query>,
-        hierarchy: impl IntoIterator<Item = impl IntoIterator<Item = impl Into<String>>>,
+        hierarchy: impl IntoIterator<Item = impl IntoIterator<Item = impl Into<DiscriminatedTag>>>,
     ) -> Self {
         Self {
             query,
@@ -55,13 +101,63 @@ impl TagExpression {
             .sum::<usize>()
     }
 
-    pub async fn execute(&self, chronicle: &Chronicle) -> Result<usize, crate::Error> {
+    pub async fn create_missing_tags(
+        &self,
+        tx: &mut Transaction<'_, Sqlite>,
+    ) -> Result<usize, crate::Error> {
+        let mut created = 0;
+
+        let mut tx = tx.begin().await?;
+
+        for level in &self.hierarchy {
+            for DiscriminatedTag {
+                name,
+                discriminator,
+            } in level.iter()
+            {
+                if Tag::try_get_discriminated(&mut tx, name, discriminator.as_deref())
+                    .await?
+                    .is_none()
+                {
+                    Tag::create(&mut tx, name, discriminator.as_deref()).await?;
+                    created += 1;
+                }
+            }
+        }
+
+        tx.commit().await?;
+
+        Ok(created)
+    }
+
+    pub async fn list_tags(
+        &self,
+        tx: &mut Transaction<'_, Sqlite>,
+    ) -> Result<Vec<Tag>, crate::Error> {
+        let mut tags = Vec::new();
+
+        for level in &self.hierarchy {
+            for DiscriminatedTag {
+                name,
+                discriminator,
+            } in level.iter()
+            {
+                tags.push(
+                    Tag::get_discriminated(tx, name.as_str(), discriminator.as_deref()).await?,
+                );
+            }
+        }
+
+        Ok(tags)
+    }
+
+    pub async fn execute(&self, tx: &mut Transaction<'_, Sqlite>) -> Result<usize, crate::Error> {
         let mut total_connections = 0;
 
-        let tx = chronicle.pool.begin().await?;
+        let mut tx = tx.begin().await?;
 
         let works = if let Some(query) = &self.query {
-            Work::search(&chronicle, query).await?
+            Work::search(&mut tx, query).await?
         } else {
             Vec::new()
         };
@@ -70,8 +166,16 @@ impl TagExpression {
             let tags = &self.hierarchy[0];
 
             for work in &works {
-                for tag in tags {
-                    if work.tag(&chronicle, tag).await? {
+                for DiscriminatedTag {
+                    name,
+                    discriminator,
+                } in tags
+                {
+                    let tag =
+                        Tag::get_discriminated_or_create(&mut tx, name, discriminator.as_deref())
+                            .await?;
+
+                    if work.tag(&mut tx, &tag).await? {
                         total_connections += 1;
                     }
                 }
@@ -83,11 +187,27 @@ impl TagExpression {
                 let previous_tags = &window[0];
                 let next_tags = &window[1];
 
-                for tag in previous_tags {
-                    let tag = Tag::get_or_create(&chronicle, &tag).await?;
+                for DiscriminatedTag {
+                    name,
+                    discriminator,
+                } in previous_tags
+                {
+                    let tag =
+                        Tag::get_discriminated_or_create(&mut tx, name, discriminator.as_deref())
+                            .await?;
 
-                    for next in next_tags {
-                        if tag.tag(&chronicle, next).await? {
+                    for DiscriminatedTag {
+                        name,
+                        discriminator,
+                    } in next_tags
+                    {
+                        let next = Tag::get_discriminated_or_create(
+                            &mut tx,
+                            name,
+                            discriminator.as_deref(),
+                        )
+                        .await?;
+                        if tag.tag(&mut tx, &next).await? {
                             total_connections += 1;
                         }
                     }
@@ -104,74 +224,104 @@ impl TagExpression {
 impl Work {
     pub async fn tag(
         &self,
-        chronicle: &Chronicle,
-        tag: impl AsRef<str>,
+        tx: &mut Transaction<'_, Sqlite>,
+        tag: &Tag,
     ) -> Result<bool, crate::Error> {
-        let tx = chronicle.pool.begin().await?;
-
-        let success = sqlx::query_as::<_, (i32,)>(r#"
-                INSERT OR IGNORE INTO tags(name) VALUES (?);
-                INSERT OR IGNORE INTO work_tags(tag, work_id) VALUES ((SELECT id FROM tags WHERE name = ?), ?) RETURNING 1;
-            "#)
-            .bind(tag.as_ref())
-            .bind(tag.as_ref())
-            .bind(&self.work_id)
-            .fetch_optional(&chronicle.pool)
-            .await?
-            .is_some();
-
-        tx.commit().await?;
-
-        Ok(success)
+        Ok(sqlx::query_as::<_, (i32,)>(
+            "INSERT OR IGNORE INTO work_tags(tag, work_id) VALUES (?, ?) RETURNING 1;",
+        )
+        .bind(&tag.id)
+        .bind(&self.work_id)
+        .fetch_optional(&mut **tx)
+        .await?
+        .is_some())
     }
 }
 
 impl Tag {
-    pub async fn get_by_name(
-        chronicle: &Chronicle,
+    pub async fn try_get_discriminated(
+        tx: &mut Transaction<'_, Sqlite>,
         name: &str,
+        discriminator: Option<&str>,
     ) -> Result<Option<Tag>, crate::Error> {
-        Ok(sqlx::query_as("SELECT * FROM tags WHERE id = ;")
+        if let Some(discriminator) = discriminator {
+            Ok(
+                sqlx::query_as("SELECT * FROM tags WHERE name = ? AND discriminator = ?;")
+                    .bind(name)
+                    .bind(discriminator)
+                    .fetch_optional(&mut **tx)
+                    .await?,
+            )
+        } else {
+            Ok(
+                sqlx::query_as("SELECT * FROM tags WHERE name = ? AND discriminator IS NULL;")
+                    .bind(name)
+                    .fetch_optional(&mut **tx)
+                    .await?,
+            )
+        }
+    }
+
+    pub async fn get_discriminated(
+        tx: &mut Transaction<'_, Sqlite>,
+        name: &str,
+        discriminator: Option<&str>,
+    ) -> Result<Tag, crate::Error> {
+        Self::try_get_discriminated(tx, name, discriminator)
+            .await?
+            .ok_or(crate::Error::NotFound {
+                kind: ModelKind::Tag,
+            })
+    }
+
+    pub async fn get(
+        tx: &mut Transaction<'_, Sqlite>,
+        name: &str,
+    ) -> Result<Vec<Tag>, crate::Error> {
+        Ok(sqlx::query_as("SELECT * FROM tags WHERE name = ?;")
             .bind(name)
-            .fetch_optional(&chronicle.pool)
+            .fetch_all(&mut **tx)
             .await?)
     }
 
-    pub async fn get_or_create(chronicle: &Chronicle, name: &str) -> Result<Tag, crate::Error> {
-        Ok(sqlx::query_as(
-            r#"
-            INSERT OR IGNORE INTO tags (name) VALUES (?);
-            SELECT * FROM tags WHERE name = ?;
-        "#,
+    pub async fn get_discriminated_or_create(
+        tx: &mut Transaction<'_, Sqlite>,
+        name: &str,
+        discriminator: Option<&str>,
+    ) -> Result<Tag, crate::Error> {
+        let Some(tag) = Self::try_get_discriminated(tx, name, discriminator).await? else {
+            return Self::create(tx, name, discriminator).await;
+        };
+
+        Ok(tag)
+    }
+
+    pub async fn create(
+        tx: &mut Transaction<'_, Sqlite>,
+        name: &str,
+        discriminator: Option<&str>,
+    ) -> Result<Tag, crate::Error> {
+        Ok(
+            sqlx::query_as("INSERT INTO tags(name, discriminator) VALUES (?, ?) RETURNING *;")
+                .bind(name)
+                .bind(discriminator)
+                .fetch_one(&mut **tx)
+                .await?,
         )
-        .bind(name)
-        .bind(name)
-        .fetch_one(&chronicle.pool)
-        .await?)
     }
 
     pub async fn tag(
         &self,
-        chronicle: &Chronicle,
-        tag: impl AsRef<str>,
+        tx: &mut Transaction<'_, Sqlite>,
+        tag: &Self,
     ) -> Result<bool, crate::Error> {
-        let tx = chronicle.pool.begin().await?;
-
-        let success = sqlx::query_as::<_, (i32,)>(
-                r#"
-                    INSERT OR IGNORE INTO tags(name) VALUES (?);
-                    INSERT OR IGNORE INTO meta_tags(tag, target) VALUES ((SELECT id FROM tags WHERE name = ?), ?) RETURNING 1;
-                "#,
-            )
-            .bind(tag.as_ref())
-            .bind(tag.as_ref())
-            .bind(&self.id)
-            .fetch_optional(&chronicle.pool)
-            .await?
-            .is_some();
-
-        tx.commit().await?;
-
-        Ok(success)
+        Ok(sqlx::query_as::<_, (i32,)>(
+            "INSERT OR IGNORE INTO meta_tags(tag, target) VALUES (?, ?) RETURNING 1;",
+        )
+        .bind(&tag.id)
+        .bind(&self.id)
+        .fetch_optional(&mut **tx)
+        .await?
+        .is_some())
     }
 }

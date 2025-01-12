@@ -5,6 +5,7 @@ use super::work::WorkId;
 #[derive(sqlx::FromRow)]
 pub struct Tag {
     pub name: String,
+    pub discriminator: Option<String>,
     pub id: TagId,
 }
 

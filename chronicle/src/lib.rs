@@ -18,7 +18,7 @@ use models::ModelKind;
 use parse::ParseError;
 use record::Record;
 use serde::{Deserialize, Serialize};
-use sqlx::{migrate::MigrateError, SqlitePool};
+use sqlx::{migrate::MigrateError, Connection, SqlitePool, Transaction};
 use tracing::{debug, error, info};
 
 pub const DEFAULT_CONFIG: &str = include_str!("../../default_config.toml");
@@ -53,6 +53,10 @@ pub struct Chronicle {
 }
 
 impl Chronicle {
+    pub async fn begin(&self) -> Result<Transaction<'_, sqlx::Sqlite>, sqlx::Error> {
+        self.pool.begin().await
+    }
+
     pub async fn from_path(config_path: impl Into<PathBuf>) -> Result<Self, Error> {
         let path = config_path.into();
 
@@ -128,6 +132,8 @@ pub enum Error {
     Migration(#[from] MigrateError),
     #[error("could not expand {0}")]
     Expansion(String),
+    #[error("{kind} not found")]
+    NotFound { kind: ModelKind },
 }
 
 #[derive(Debug, thiserror::Error)]

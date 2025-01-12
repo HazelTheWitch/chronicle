@@ -127,16 +127,39 @@ pub async fn bulk(tasks: usize, command: &BulkCommand) -> anyhow::Result<ExitCod
                 urls.flatten().collect(),
                 record_details,
                 |bar: ProgressBar, line: String, details: RecordDetails| async move {
+                    let chronicle = get_chronicle().await;
+
+                    let Ok(mut tx) = chronicle.begin().await else {
+                        bar.println(
+                            &ERROR_STYLE
+                                .apply_to("Could not start transaction")
+                                .to_string(),
+                        );
+                        return Vec::new();
+                    };
+
                     match Url::parse(&line) {
                         Ok(url) => {
                             match Work::import_works_from_url(
-                                get_chronicle().await,
+                                chronicle,
+                                &mut tx,
                                 &url,
                                 Some(&details),
                             )
                             .await
                             {
-                                Ok(works) => works,
+                                Ok(works) => {
+                                    if let Err(err) = tx.commit().await {
+                                        bar.println(
+                                            &ERROR_STYLE
+                                                .apply_to(&format!(
+                                                    "Could not commit transaction: {err}"
+                                                ))
+                                                .to_string(),
+                                        );
+                                    }
+                                    works
+                                }
                                 Err(err) => {
                                     bar.println(
                                         ERROR_STYLE
@@ -217,7 +240,16 @@ pub async fn bulk(tasks: usize, command: &BulkCommand) -> anyhow::Result<ExitCod
                         }
                     };
 
-                    match Work::create_from_record(&chronicle, &record).await {
+                    let Ok(mut tx) = get_chronicle().await.begin().await else {
+                        bar.println(
+                            &ERROR_STYLE
+                                .apply_to("Could not start transaction")
+                                .to_string(),
+                        );
+                        return None;
+                    };
+
+                    let work = match Work::create_from_record(&mut tx, &record).await {
                         Ok(work) => Some(work),
                         Err(err) => {
                             bar.println(
@@ -225,9 +257,19 @@ pub async fn bulk(tasks: usize, command: &BulkCommand) -> anyhow::Result<ExitCod
                                     .apply_to(format!("Could not create work: {err}"))
                                     .to_string(),
                             );
-                            None
+                            return None;
                         }
+                    };
+
+                    if let Err(err) = tx.commit().await {
+                        bar.println(
+                            &ERROR_STYLE
+                                .apply_to(&format!("Could not commit transaction: {err}"))
+                                .to_string(),
+                        );
                     }
+
+                    work
                 },
                 "Adding",
                 tasks,
@@ -261,7 +303,16 @@ pub async fn bulk(tasks: usize, command: &BulkCommand) -> anyhow::Result<ExitCod
                         }
                     };
 
-                    match expression.execute(get_chronicle().await).await {
+                    let Ok(mut tx) = get_chronicle().await.begin().await else {
+                        bar.println(
+                            &ERROR_STYLE
+                                .apply_to("Could not start transaction")
+                                .to_string(),
+                        );
+                        return 0;
+                    };
+
+                    let total = match expression.execute(&mut tx).await {
                         Ok(total) => total,
                         Err(err) => {
                             bar.println(
@@ -274,7 +325,17 @@ pub async fn bulk(tasks: usize, command: &BulkCommand) -> anyhow::Result<ExitCod
 
                             return 0;
                         }
+                    };
+
+                    if let Err(err) = tx.commit().await {
+                        bar.println(
+                            &ERROR_STYLE
+                                .apply_to(&format!("Could not commit transaction: {err}"))
+                                .to_string(),
+                        );
                     }
+
+                    total
                 },
                 "Tagging",
                 tasks,

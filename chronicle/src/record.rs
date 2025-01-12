@@ -2,7 +2,7 @@ use std::{fs, io, path::PathBuf};
 
 use bytemuck::cast;
 
-use crate::{author::AuthorQuery, Chronicle};
+use crate::{author::AuthorQuery, tag::DiscriminatedTag, Chronicle};
 
 pub struct Record {
     pub path: PathBuf,
@@ -37,7 +37,7 @@ pub struct RecordDetails {
     pub author: Option<AuthorQuery>,
     pub author_url: Option<url::Url>,
     pub caption: Option<String>,
-    pub tags: Vec<String>,
+    pub tags: Vec<DiscriminatedTag>,
 }
 
 impl RecordDetails {

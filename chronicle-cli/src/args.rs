@@ -1,6 +1,11 @@
 use std::{fmt::Display, path::PathBuf};
 
-use chronicle::{author::AuthorQuery, record::RecordDetails, search::Query, tag::TagExpression};
+use chronicle::{
+    author::AuthorQuery,
+    record::RecordDetails,
+    search::Query,
+    tag::{DiscriminatedTag, TagExpression},
+};
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use tracing::Level;
 use url::Url;
@@ -211,7 +216,7 @@ impl Display for AuthorColumn {
 #[derive(Debug, Default, Clone, Args)]
 pub struct WorkDetails {
     /// A list of tags to associate with the work
-    pub tags: Vec<String>,
+    pub tags: Vec<DiscriminatedTag>,
     /// The title of the work
     #[arg(short, long)]
     pub title: Option<String>,
@@ -229,7 +234,7 @@ pub struct WorkDetails {
 #[derive(Debug, Default, Clone, Args)]
 pub struct BulkWorkDetails {
     /// A list of tags to associate with the works
-    pub tags: Vec<String>,
+    pub tags: Vec<DiscriminatedTag>,
     /// The title of the works
     #[arg(short, long)]
     pub title: Option<String>,

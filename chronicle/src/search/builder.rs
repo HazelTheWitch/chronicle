@@ -6,9 +6,17 @@ impl QueryTerm {
     fn push_select<'args>(&'args self, b: &mut QueryBuilder<'args, Sqlite>) {
         match self {
             QueryTerm::Tag(tag) => {
-                b.push("WITH RECURSIVE implied(tag_id) AS (SELECT (SELECT id FROM tags WHERE name = ")
-                    .push_bind(tag)
+                if let Some(discriminator) = &tag.discriminator {
+                    b.push("WITH RECURSIVE implied(tag_id) AS (SELECT (SELECT id FROM tags WHERE name = ")
+                    .push_bind(&tag.name)
+                    .push(" AND discriminator = ")
+                    .push_bind(discriminator)
                     .push(") UNION SELECT target FROM meta_tags JOIN implied ON meta_tags.tag = implied.tag_id) SELECT work_id FROM works WHERE work_id IN (SELECT work_id FROM work_tags JOIN implied ON work_tags.tag = implied.tag_id)");
+                } else {
+                    b.push("WITH RECURSIVE implied(tag_id) AS (SELECT (SELECT id FROM tags WHERE name = ")
+                    .push_bind(&tag.name)
+                    .push(") UNION SELECT target FROM meta_tags JOIN implied ON meta_tags.tag = implied.tag_id) SELECT work_id FROM works WHERE work_id IN (SELECT work_id FROM work_tags JOIN implied ON work_tags.tag = implied.tag_id)");
+                }
             }
             QueryTerm::Title(title) => {
                 b.push("SELECT work_id FROM works WHERE title LIKE '%' || ")

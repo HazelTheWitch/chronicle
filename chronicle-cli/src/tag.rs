@@ -19,7 +19,10 @@ pub async fn execute_tag_expression(expression: &TagExpression) -> anyhow::Resul
         expression.approximate_connections()
     ));
 
-    let total = expression.execute(&chronicle).await?;
+    let mut tx = chronicle.begin().await?;
+    let total = expression.execute(&mut tx).await?;
+
+    tx.commit().await?;
 
     spinner.finish_and_clear();
 

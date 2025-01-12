@@ -165,9 +165,8 @@ async fn main() -> anyhow::Result<ExitCode> {
 
     let result = fallible().await;
 
-    if let Err(err) = &result {
-        error!("Chronicle encountered an error which it could not recover from, please report this at https://github.com/HazelTheWitch/chronicle/issues/new");
-        error!("{err}");
+    if result.is_err() {
+        write_failure(&format!("Encountered an error which could not be recovered from, please report this at https://github.com/HazelTheWitch/chronicle/issues/new"));
     }
 
     result

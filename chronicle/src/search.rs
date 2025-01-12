@@ -7,8 +7,9 @@ use std::{
 };
 
 use builder::SearchQueryBuilder;
+use sqlx::{Sqlite, Transaction};
 
-use crate::{models::Work, parse::ParseError, utils::hash_t, Chronicle};
+use crate::{models::Work, parse::ParseError, tag::DiscriminatedTag, utils::hash_t, Chronicle};
 
 pub mod builder;
 pub(crate) mod parse;
@@ -16,7 +17,7 @@ pub(crate) mod parse;
 // TODO: Add Id query term
 #[derive(PartialEq, Eq, Debug, Clone)]
 pub enum QueryTerm {
-    Tag(String),
+    Tag(DiscriminatedTag),
     Title(String),
     Author(String),
     Caption(String),
@@ -26,7 +27,7 @@ pub enum QueryTerm {
 impl Display for QueryTerm {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            QueryTerm::Tag(text) => write!(f, r#"tag:"{text}""#),
+            QueryTerm::Tag(tag) => write!(f, r#"tag:"{tag}""#),
             QueryTerm::Title(text) => write!(f, r#"title:"{text}""#),
             QueryTerm::Author(text) => write!(f, r#"author:"{text}""#),
             QueryTerm::Caption(text) => write!(f, r#"caption:"{text}""#),
@@ -255,13 +256,16 @@ impl Query {
 }
 
 impl Work {
-    pub async fn get_all(chronicle: &Chronicle) -> Result<Vec<Work>, crate::Error> {
+    pub async fn get_all(tx: &mut Transaction<'_, Sqlite>) -> Result<Vec<Work>, crate::Error> {
         Ok(sqlx::query_as("SELECT * FROM works;")
-            .fetch_all(&chronicle.pool)
+            .fetch_all(&mut **tx)
             .await?)
     }
 
-    pub async fn search(chronicle: &Chronicle, query: &Query) -> Result<Vec<Work>, crate::Error> {
+    pub async fn search(
+        tx: &mut Transaction<'_, Sqlite>,
+        query: &Query,
+    ) -> Result<Vec<Work>, crate::Error> {
         let mut builder = SearchQueryBuilder::new();
 
         let table = builder.push_query_table(query);
@@ -274,16 +278,16 @@ impl Work {
 
         let built = builder.query_builder.build_query_as();
 
-        Ok(built.fetch_all(&chronicle.pool).await?)
+        Ok(built.fetch_all(&mut **tx).await?)
     }
 
     pub async fn search_by_str(
-        chronicle: &Chronicle,
+        tx: &mut Transaction<'_, Sqlite>,
         search_query: &str,
     ) -> Result<Vec<Work>, crate::Error> {
         let query = Query::from_str(search_query)?;
 
-        Self::search(chronicle, &query).await
+        Self::search(tx, &query).await
     }
 }
 

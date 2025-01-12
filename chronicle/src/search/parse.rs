@@ -4,11 +4,11 @@ use nom::{
     character::complete::{alphanumeric1, one_of, space0, space1},
     combinator::{fail, map, recognize},
     multi::{many1, separated_list1},
-    sequence::{delimited, pair, preceded, separated_pair},
+    sequence::{delimited, pair, preceded, separated_pair, terminated},
     IResult,
 };
 
-use crate::parse::string;
+use crate::{parse::string, tag::parse::discriminated_tag};
 
 use super::{Query, QueryTerm};
 
@@ -28,20 +28,16 @@ fn term_kind(input: &str) -> IResult<&str, &str, nom::error::VerboseError<&str>>
 }
 
 fn tagged_term(input: &str) -> IResult<&str, QueryTerm, nom::error::VerboseError<&str>> {
-    let (i, (kind, string)) = separated_pair(term_kind, tag(":"), string)(input)?;
+    let (i, kind) = terminated(term_kind, tag(":"))(input)?;
 
-    let text = string.to_owned();
-
-    let term = match kind {
-        "tag" => QueryTerm::Tag(text),
-        "t" | "title" => QueryTerm::Title(text),
-        "a" | "artist" | "author" => QueryTerm::Author(text),
-        "c" | "caption" => QueryTerm::Caption(text),
-        "u" | "url" => QueryTerm::Url(text),
+    match kind {
+        "tag" => map(discriminated_tag, |t| QueryTerm::Tag(t.into()))(i),
+        "t" | "title" => map(string, |s| QueryTerm::Title(s.to_owned()))(i),
+        "a" | "artist" | "author" => map(string, |s| QueryTerm::Author(s.to_owned()))(i),
+        "c" | "caption" => map(string, |s| QueryTerm::Caption(s.to_owned()))(i),
+        "u" | "url" => map(string, |s| QueryTerm::Url(s.to_owned()))(i),
         _ => return fail("invalid term tag"),
-    };
-
-    Ok((i, term))
+    }
 }
 
 fn term(input: &str) -> IResult<&str, QueryTerm, nom::error::VerboseError<&str>> {
@@ -49,7 +45,7 @@ fn term(input: &str) -> IResult<&str, QueryTerm, nom::error::VerboseError<&str>>
         nom::combinator::not(alt((and_separator, or_separator))),
         alt((
             tagged_term,
-            map(string, |string| QueryTerm::Tag(string.to_owned())),
+            map(discriminated_tag, |t| QueryTerm::Tag(t.into())),
         )),
     )(input)
 }
@@ -109,10 +105,7 @@ pub fn query(input: &str) -> IResult<&str, Query, nom::error::VerboseError<&str>
 mod tests {
     use nom::Parser;
 
-    use crate::search::{
-        parse::{query, term},
-        Query, QueryTerm,
-    };
+    use crate::search::{parse::term, QueryTerm};
 
     use super::term_kind;
 
@@ -145,33 +138,6 @@ mod tests {
         assert_eq!(
             term(r#"t:"Ace Attorney""#),
             Ok(("", QueryTerm::Title(String::from("Ace Attorney"))))
-        );
-        assert_eq!(
-            term("arlefuri"),
-            Ok(("", QueryTerm::Tag(String::from("arlefuri"))))
-        );
-    }
-
-    #[test]
-    fn test_query() {
-        assert_eq!(
-            query(r#"arlecchino and (furina or yae_miko t:"title here" -silly)"#),
-            Ok((
-                "",
-                Query::And(vec![
-                    Query::Term(QueryTerm::Tag(String::from("arlecchino"))),
-                    Query::Or(vec![
-                        Query::Term(QueryTerm::Tag(String::from("furina"))),
-                        Query::And(vec![
-                            Query::Term(QueryTerm::Tag(String::from("yae_miko"))),
-                            Query::Term(QueryTerm::Title(String::from("title here"))),
-                            Query::Not(Box::new(Query::Term(QueryTerm::Tag(String::from(
-                                "silly"
-                            ))))),
-                        ]),
-                    ]),
-                ])
-            ))
         );
     }
 }

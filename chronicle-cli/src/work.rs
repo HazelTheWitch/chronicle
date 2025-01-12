@@ -49,9 +49,11 @@ pub async fn work_import(source: &url::Url, details: &WorkDetails) -> anyhow::Re
 
     spinner.set_prefix(PREFIX_STYLE.apply_to("Importing").to_string());
     spinner.set_message(source.to_string());
+    let chronicle = get_chronicle().await;
+    let mut tx = chronicle.begin().await?;
 
     let works =
-        Work::import_works_from_url(get_chronicle().await, source, Some(&details.clone().into()))
+        Work::import_works_from_url(chronicle, &mut tx, source, Some(&details.clone().into()))
             .await;
 
     spinner.finish_and_clear();
@@ -143,7 +145,11 @@ pub fn print_works(works: &Vec<Work>, options: &WorkDisplayOptions) -> anyhow::R
 }
 
 pub async fn work_list(options: &WorkDisplayOptions) -> anyhow::Result<ExitCode> {
-    let works = Work::get_all(get_chronicle().await).await?;
+    let mut tx = get_chronicle().await.begin().await?;
+
+    let works = Work::get_all(&mut tx).await?;
+
+    tx.commit().await?;
 
     print_works(&works, options)?;
 
@@ -151,7 +157,11 @@ pub async fn work_list(options: &WorkDisplayOptions) -> anyhow::Result<ExitCode>
 }
 
 pub async fn work_search(query: &Query, options: &WorkDisplayOptions) -> anyhow::Result<ExitCode> {
-    let works = Work::search(get_chronicle().await, query).await?;
+    let mut tx = get_chronicle().await.begin().await?;
+
+    let works = Work::search(&mut tx, query).await?;
+
+    tx.commit().await?;
 
     print_works(&works, options)?;
 
@@ -179,7 +189,18 @@ pub async fn work_add(path: impl AsRef<Path>, details: &WorkDetails) -> anyhow::
         details.clone().into(),
     )?;
 
-    let work = Work::create_from_record(&chronicle, &record).await?;
+    let mut tx = chronicle.begin().await?;
+
+    let work = match Work::create_from_record(&mut tx, &record).await {
+        Ok(work) => work,
+        Err(err) => {
+            write_failure(&format!("Failed {err}"))?;
+
+            return Ok(ExitCode::FAILURE);
+        }
+    };
+
+    tx.commit().await?;
 
     TERMINAL.write_line(&format!(
         "{}: chronicled {} as {}",

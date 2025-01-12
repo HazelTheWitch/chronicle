@@ -1,5 +1,6 @@
 use std::{convert::Infallible, str::FromStr};
 
+use sqlx::{Sqlite, Transaction};
 use url::Url;
 
 use crate::{
@@ -29,51 +30,54 @@ impl FromStr for AuthorQuery {
 }
 
 impl Author {
-    pub async fn create(chronicle: &Chronicle, name: &str) -> Result<Author, crate::Error> {
+    pub async fn create(
+        tx: &mut Transaction<'_, Sqlite>,
+        name: &str,
+    ) -> Result<Author, crate::Error> {
         let author: Author = sqlx::query_as("INSERT INTO authors DEFAULT VALUES RETURNING *;")
-            .fetch_one(&chronicle.pool)
+            .fetch_one(&mut **tx)
             .await?;
 
         sqlx::query("INSERT INTO author_names(author_id, name) VALUES (?, ?);")
             .bind(author.author_id)
             .bind(name)
-            .execute(&chronicle.pool)
+            .execute(&mut **tx)
             .await?;
 
         Ok(author)
     }
 
     pub async fn get_by_id(
-        chronicle: &Chronicle,
+        tx: &mut Transaction<'_, Sqlite>,
         author_id: &AuthorId,
     ) -> Result<Option<Author>, crate::Error> {
         Ok(sqlx::query_as("SELECT * FROM authors WHERE author_id = ?;")
             .bind(&author_id)
-            .fetch_optional(&chronicle.pool)
+            .fetch_optional(&mut **tx)
             .await?)
     }
 
     pub async fn get(
-        chronicle: &Chronicle,
+        tx: &mut Transaction<'_, Sqlite>,
         query: &AuthorQuery,
     ) -> Result<Vec<Author>, crate::Error> {
         Ok(match query {
             AuthorQuery::Name(name) => {
                 sqlx::query_as("SELECT * FROM authors JOIN author_names ON authors.author_id = author_names.author_id WHERE name = ?;")
                     .bind(name)
-                    .fetch_all(&chronicle.pool)
+                    .fetch_all(&mut **tx)
                     .await?
             },
             AuthorQuery::Id(id) => {
                 sqlx::query_as("SELECT * FROM authors WHERE author_id = ?;")
                     .bind(id)
-                    .fetch_all(&chronicle.pool)
+                    .fetch_all(&mut **tx)
                     .await?
             },
             AuthorQuery::Url(url) => {
                 sqlx::query_as("SELECT * FROM authors JOIN author_urls ON authors.author_id = author_urls.author_id WHERE author_urls.url = ?;")
                     .bind(url.to_string())
-                    .fetch_all(&chronicle.pool)
+                    .fetch_all(&mut **tx)
                     .await?
             },
 
@@ -82,19 +86,19 @@ impl Author {
 
     pub async fn get_author_urls(
         &self,
-        chronicle: &Chronicle,
+        tx: &mut Transaction<'_, Sqlite>,
     ) -> Result<Vec<AuthorUrl>, crate::Error> {
         Ok(
             sqlx::query_as("SELECT * FROM author_urls WHERE author_id = ?;")
                 .bind(&self.author_id)
-                .fetch_all(&chronicle.pool)
+                .fetch_all(&mut **tx)
                 .await?,
         )
     }
 
     pub async fn add_url(
         &self,
-        chronicle: &Chronicle,
+        tx: &mut Transaction<'_, Sqlite>,
         url: &Url,
     ) -> Result<AuthorUrl, crate::Error> {
         let url = url.to_string();
@@ -109,13 +113,13 @@ impl Author {
         .bind(&url)
         .bind(&self.author_id)
         .bind(&url)
-        .fetch_one(&chronicle.pool)
+        .fetch_one(&mut **tx)
         .await?)
     }
 
     pub async fn add_alias(
         &self,
-        chronicle: &Chronicle,
+        tx: &mut Transaction<'_, Sqlite>,
         alias: &str,
     ) -> Result<AuthorName, crate::Error> {
         Ok(sqlx::query_as(
@@ -128,25 +132,25 @@ impl Author {
         .bind(&alias)
         .bind(&self.author_id)
         .bind(&alias)
-        .fetch_one(&chronicle.pool)
+        .fetch_one(&mut **tx)
         .await?)
     }
 
     pub async fn get_author_names(
         &self,
-        chronicle: &Chronicle,
+        tx: &mut Transaction<'_, Sqlite>,
     ) -> Result<Vec<AuthorName>, crate::Error> {
         Ok(
             sqlx::query_as("SELECT * FROM author_names WHERE author_id = ?;")
                 .bind(&self.author_id)
-                .fetch_all(&chronicle.pool)
+                .fetch_all(&mut **tx)
                 .await?,
         )
     }
 
-    pub async fn get_all(chronicle: &Chronicle) -> Result<Vec<Self>, crate::Error> {
+    pub async fn get_all(tx: &mut Transaction<'_, Sqlite>) -> Result<Vec<Self>, crate::Error> {
         Ok(sqlx::query_as("SELECT * FROM authors;")
-            .fetch_all(&chronicle.pool)
+            .fetch_all(&mut **tx)
             .await?)
     }
 }
