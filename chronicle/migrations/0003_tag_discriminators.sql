@@ -24,7 +24,7 @@ ALTER TABLE
 ALTER TABLE
     "old_tags" RENAME TO "tags";
 
-CREATE TRIGGER "tag_uniqueness" BEFORE
+CREATE TRIGGER "tag_uniqueness_with_discriminator" BEFORE
 INSERT
     ON "tags" FOR EACH ROW
 BEGIN
@@ -38,6 +38,16 @@ WHERE
             "tags"
         WHERE
             "tags"."name" = NEW."name"
-            AND "tags"."discriminator" IS NULL
+            AND (
+                (
+                    NEW."discriminator" IS NULL
+                    AND "tags".discriminator IS NOT NULL
+                )
+                OR (
+                    NEW."discriminator" IS NOT NULL
+                    AND "tags"."discriminator" IS NULL
+                )
+            )
     );
+
 END;

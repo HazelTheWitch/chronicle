@@ -7,12 +7,17 @@ mod tag;
 mod utils;
 mod work;
 
-use std::{fs, process::ExitCode};
+use std::{
+    fs::{self, File},
+    io::BufWriter,
+    process::ExitCode,
+};
 
 use args::{Arguments, Command, ServiceCommand};
 use author::author_command;
 use chronicle::{import::SERVICES, Chronicle, DEFAULT_CONFIG};
-use clap::Parser;
+use clap::{CommandFactory, Parser};
+use clap_complete::{generate, Shell};
 use console::{Style, Term};
 use dialoguer::{Password, Select};
 use directories::ProjectDirs;
@@ -136,6 +141,24 @@ async fn fallible() -> anyhow::Result<ExitCode> {
             }
         },
         Command::Bulk { command, tasks } => bulk::bulk(*tasks, command).await,
+        Command::Completions { shell, output } => {
+            let Some(shell) = shell.or_else(|| Shell::from_env()) else {
+                write_failure("Failed detecting shell from environment, please provide a shell")?;
+                return Ok(ExitCode::FAILURE);
+            };
+
+            let mut command = Arguments::command();
+
+            if let Some(output) = output {
+                let mut writer =
+                    BufWriter::new(File::options().append(true).create(true).open(&output)?);
+                generate(shell, &mut command, "chronicle", &mut writer);
+            } else {
+                generate(shell, &mut command, "chronicle", &mut TERMINAL.clone());
+            }
+
+            Ok(ExitCode::SUCCESS)
+        }
     }
 }
 

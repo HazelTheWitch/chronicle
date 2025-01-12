@@ -171,7 +171,9 @@ pub async fn execute_tag_expression(expression: &TagExpression) -> anyhow::Resul
     for tag in expression.hierarchy.iter().flatten() {
         if tag.discriminator.is_some() {
             if let Some(mut other) = Tag::try_get_discriminated(&mut tx, &tag.name, None).await? {
-                let other_discriminant = Input::<TagPart>::new().with_prompt(format!("Tag '{other}' already exists and is not discriminated, please provide a discriminator for it")).interact()?;
+                let other_discriminant = Input::<TagPart>::new()
+                    .with_prompt(format!("Tag '{other}' already exists and is not discriminated, please provide a discriminator for it"))
+                    .interact()?;
 
                 other.discriminate(&mut tx, &other_discriminant.0).await?;
             }

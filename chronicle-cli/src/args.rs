@@ -7,6 +7,7 @@ use chronicle::{
     tag::{DiscriminatedTag, TagExpression, TagPart},
 };
 use clap::{Args, Parser, Subcommand, ValueEnum};
+use clap_complete::Shell;
 use tracing::Level;
 use url::Url;
 
@@ -55,6 +56,16 @@ pub enum Command {
         tasks: usize,
         #[command(subcommand)]
         command: BulkCommand,
+    },
+    /// Generate shell completions
+    Completions {
+        /// The shell to generate completions for, if omitted attempts to infer it from the current
+        /// shell.
+        #[arg(short, long)]
+        shell: Option<Shell>,
+        /// The file to output to, this can be anywhere which is sourced by your shell
+        #[arg(short, long)]
+        output: Option<PathBuf>,
     },
 }
 
