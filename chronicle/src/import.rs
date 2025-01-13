@@ -1,73 +1,77 @@
 pub mod bsky;
+pub mod tumblr;
 
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, ops::Deref, sync::Arc};
 
 use async_trait::async_trait;
+use keyring::Entry;
+use serde::{Deserialize, Serialize};
 use sqlx::{types::chrono, Acquire, Sqlite, Transaction};
-use tokio::sync::RwLock;
-use tracing::info;
 use url::Url;
 
 use crate::{
     author::{self, AuthorQuery},
     models::{Author, Tag, Work},
     record::{Record, RecordDetails},
-    Chronicle,
+    Chronicle, ServiceError,
 };
 
 pub const SERVICE_NAME: &str = "chronicle";
 
+#[derive(Deserialize, Serialize)]
+struct StoredSecrets {
+    secrets: HashMap<String, String>,
+    previous: Option<HashMap<String, String>>,
+}
+
 #[async_trait]
 pub trait Service {
-    fn host(&self) -> &str;
+    fn host_matches(&self, host: &str) -> bool;
+    fn name(&self) -> &str;
+    fn secrets(&self) -> &[&str];
+    async fn authenticate(
+        &self,
+        secrets: &HashMap<String, String>,
+        previous_result: Option<HashMap<String, String>>,
+    ) -> Result<HashMap<String, String>, crate::Error>;
     async fn import(
         &self,
         chronicle: &crate::Chronicle,
         url: Url,
         records: &mut Vec<Record>,
-        secrets: Arc<RwLock<HashMap<String, String>>>,
+        secrets: HashMap<String, String>,
+        authentication: HashMap<String, String>,
     ) -> Result<(), crate::Error>;
-    fn secrets(&self) -> &[&str];
-
-    fn write_secret(&self, key: &str, secret: &str) -> Result<(), keyring::Error> {
-        let entry = keyring::Entry::new(SERVICE_NAME, key)?;
-
-        entry.set_password(secret)?;
-
-        Ok(())
-    }
-
-    fn has_secrets(&self, secrets: &HashMap<String, String>) -> bool {
-        for secret in self.secrets() {
-            if !secrets.contains_key(*secret) {
-                return false;
-            }
-        }
-
-        true
-    }
-
-    fn name(&self) -> &str {
-        self.host()
-    }
-}
-
-pub struct Services {
-    pub services: Vec<Box<dyn Service + Send + Sync + 'static>>,
-    secrets: Arc<RwLock<HashMap<String, String>>>,
 }
 
 lazy_static::lazy_static! {
-    pub static ref SERVICES: Services = get_services();
+    pub static ref SERVICES: Vec<Box<dyn Service + Send + Sync + 'static>> = vec![Box::new(bsky::Bsky::default()), Box::new(tumblr::Tumblr::default())];
 }
 
-fn get_services() -> Services {
-    let services: Vec<Box<dyn Service + Send + Sync + 'static>> = vec![Box::new(bsky::Bsky)];
+pub fn write_secrets(
+    service_name: &str,
+    secrets: HashMap<String, String>,
+) -> Result<(), crate::Error> {
+    let user = whoami::username();
 
-    Services {
-        services,
-        secrets: Default::default(),
-    }
+    let entry = Entry::new_with_target(service_name, SERVICE_NAME, &user).map_err(|error| {
+        crate::Error::Keyring {
+            service: service_name.to_owned(),
+            error,
+        }
+    })?;
+
+    entry
+        .set_secret(&bincode::serialize(&StoredSecrets {
+            secrets,
+            previous: None,
+        })?)
+        .map_err(|error| crate::Error::Keyring {
+            service: service_name.to_owned(),
+            error,
+        })?;
+
+    Ok(())
 }
 
 impl Work {
@@ -85,38 +89,59 @@ impl Work {
 
         let mut records = Vec::with_capacity(6);
 
-        for service in SERVICES.services.iter() {
-            if host == service.host() {
-                {
-                    let mut secrets = SERVICES.secrets.write().await;
+        let Some(service) = SERVICES.iter().find(|s| s.host_matches(&host)) else {
+            return Err(crate::Error::Generic(format!(
+                "could not find service for {host}"
+            )));
+        };
 
-                    for secret_key in service.secrets() {
-                        let secret_value = keyring::Entry::new(SERVICE_NAME, &secret_key)
-                            .map_err(|error| crate::Error::Keyring {
-                                service: service.name().to_owned(),
-                                error,
-                            })?
-                            .get_password()
-                            .map_err(|error| crate::Error::Keyring {
-                                service: service.name().to_owned(),
-                                error,
-                            })?;
-                        secrets.insert(secret_key.to_string(), secret_value.to_owned());
-                    }
+        let user = whoami::username();
+
+        let entry =
+            Entry::new_with_target(service.name(), SERVICE_NAME, &user).map_err(|error| {
+                crate::Error::Keyring {
+                    service: service.name().to_owned(),
+                    error,
                 }
+            })?;
 
-                service
-                    .import(
-                        chronicle,
-                        url.clone(),
-                        &mut records,
-                        SERVICES.secrets.clone(),
-                    )
-                    .await?;
+        let mut secrets: StoredSecrets =
+            bincode::deserialize(&entry.get_secret().map_err(|error| crate::Error::Keyring {
+                service: service.name().to_owned(),
+                error,
+            })?)?;
 
-                break;
+        for secret in service.secrets() {
+            if !secrets.secrets.contains_key(*secret) {
+                return Err(crate::Error::Generic(format!(
+                    "{} does not have secret: {secret}",
+                    service.name()
+                )));
             }
         }
+
+        secrets.previous = Some(
+            service
+                .authenticate(&secrets.secrets, secrets.previous)
+                .await?,
+        );
+
+        entry
+            .set_secret(&bincode::serialize(&secrets)?)
+            .map_err(|error| crate::Error::Keyring {
+                service: service.name().to_owned(),
+                error,
+            })?;
+
+        service
+            .import(
+                &chronicle,
+                url.clone(),
+                &mut records,
+                secrets.secrets,
+                secrets.previous.expect("just filled"),
+            )
+            .await?;
 
         if let Some(provided_details) = provided_details {
             for record in records.iter_mut() {

@@ -8,6 +8,7 @@ mod utils;
 mod work;
 
 use std::{
+    collections::HashMap,
     fs::{self, File},
     io::BufWriter,
     process::ExitCode,
@@ -15,7 +16,10 @@ use std::{
 
 use args::{Arguments, Command, ServiceCommand};
 use author::author_command;
-use chronicle::{import::SERVICES, Chronicle, DEFAULT_CONFIG};
+use chronicle::{
+    import::{write_secrets, SERVICES},
+    Chronicle, DEFAULT_CONFIG,
+};
 use clap::{CommandFactory, Parser};
 use clap_complete::{generate, Shell};
 use console::{Style, Term};
@@ -85,7 +89,6 @@ async fn fallible() -> anyhow::Result<ExitCode> {
         Command::Service { command } => match command {
             ServiceCommand::Login { service } => {
                 let services: Vec<_> = SERVICES
-                    .services
                     .iter()
                     .filter_map(|s| {
                         if s.secrets().is_empty() {
@@ -103,14 +106,16 @@ async fn fallible() -> anyhow::Result<ExitCode> {
                             .with_prompt("Select service to login")
                             .items(&services)
                             .interact()?;
-                        &SERVICES.services[index].name().to_owned()
+                        &SERVICES[index].name().to_owned()
                     }
                 };
 
-                let Some(service) = SERVICES.services.iter().find(|s| s.name() == service) else {
+                let Some(service) = SERVICES.iter().find(|s| s.name() == service) else {
                     write_failure(&format!("Unknown service {service}"))?;
                     return Ok(ExitCode::FAILURE);
                 };
+
+                let mut secrets = HashMap::new();
 
                 for secret in service.secrets() {
                     let Ok(value) = Password::new().with_prompt(secret.to_string()).interact()
@@ -119,11 +124,10 @@ async fn fallible() -> anyhow::Result<ExitCode> {
                         return Ok(ExitCode::FAILURE);
                     };
 
-                    if let Err(err) = service.write_secret(secret, &value) {
-                        write_failure(&format!("Failed to write secret: {err}"))?;
-                        return Ok(ExitCode::FAILURE);
-                    }
+                    secrets.insert(secret.to_string(), value);
                 }
+
+                write_secrets(service.name(), secrets)?;
 
                 write_success(&format!(
                     "Successfully wrote secrets for {}",
@@ -133,7 +137,7 @@ async fn fallible() -> anyhow::Result<ExitCode> {
                 Ok(ExitCode::SUCCESS)
             }
             ServiceCommand::List => {
-                for service in SERVICES.services.iter() {
+                for service in SERVICES.iter() {
                     TERMINAL.write_line(service.name())?;
                 }
 

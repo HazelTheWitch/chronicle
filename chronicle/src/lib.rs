@@ -1,4 +1,5 @@
 pub mod author;
+pub mod http;
 pub mod id;
 pub mod import;
 pub mod models;
@@ -14,14 +15,22 @@ use std::{
     path::PathBuf,
 };
 
+use http::start_http_server;
 use models::ModelKind;
+use oauth2::{basic::BasicErrorResponseType, StandardErrorResponse};
 use parse::ParseError;
 use record::Record;
+use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use sqlx::{migrate::MigrateError, Connection, SqlitePool, Transaction};
+use tokio::task::JoinHandle;
 use tracing::{debug, error, info};
 
 pub const DEFAULT_CONFIG: &str = include_str!("../../default_config.toml");
+
+lazy_static::lazy_static! {
+    pub static ref HTTP_CLIENT: Client = Client::new();
+}
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Config {
@@ -50,6 +59,7 @@ pub struct Chronicle {
     pub pool: SqlitePool,
     pub config_path: PathBuf,
     pub config: Config,
+    pub http_task: JoinHandle<()>,
 }
 
 impl Chronicle {
@@ -90,10 +100,13 @@ impl Chronicle {
 
         sqlx::migrate!().run(&pool).await?;
 
+        let http_task = tokio::spawn(start_http_server());
+
         Ok(Chronicle {
             pool,
             config_path: path,
             config,
+            http_task,
         })
     }
 }
@@ -118,7 +131,7 @@ pub enum Error {
         service: String,
         error: keyring::Error,
     },
-    #[error("error communicating with service")]
+    #[error("error communicating with service: {0}")]
     Http(#[from] reqwest::Error),
     #[error("invalid url")]
     Url(#[from] url::ParseError),
@@ -134,6 +147,10 @@ pub enum Error {
     Expansion(String),
     #[error("{kind} not found")]
     NotFound { kind: ModelKind },
+    #[error("could not deserialize secrets")]
+    Secret(#[from] bincode::Error),
+    #[error("oauth2 error {0}")]
+    Oauth2(Box<dyn std::error::Error + Send + Sync>),
 }
 
 #[derive(Debug, thiserror::Error)]

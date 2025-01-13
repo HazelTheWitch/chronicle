@@ -24,7 +24,7 @@ ALTER TABLE
 ALTER TABLE
     "old_tags" RENAME TO "tags";
 
-CREATE TRIGGER "tag_uniqueness_with_discriminator" BEFORE
+CREATE TRIGGER "tag_uniqueness" BEFORE
 INSERT
     ON "tags" FOR EACH ROW
 BEGIN

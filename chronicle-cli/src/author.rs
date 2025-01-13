@@ -30,6 +30,8 @@ async fn add_url_author(query: &AuthorQuery, url: &Url) -> anyhow::Result<ExitCo
 
     author.add_url(&mut tx, url).await?;
 
+    tx.commit().await?;
+
     write_success(&format!("Added url {url} -> {}", author.author_id))?;
 
     Ok(ExitCode::SUCCESS)
@@ -60,6 +62,8 @@ async fn alias_author(query: &AuthorQuery, alias: &str) -> anyhow::Result<ExitCo
     };
 
     author.add_alias(&mut tx, alias).await?;
+
+    tx.commit().await?;
 
     write_success(&format!("Aliased {alias} -> {}", author.author_id))?;
 

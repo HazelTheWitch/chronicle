@@ -55,18 +55,31 @@ fn parse_bsky_path(i: &str) -> IResult<&str, BskyPath<'_>> {
 const BSKY_IDENTIFIER: &str = "bsky-identifier";
 const BSKY_PASSWORD: &str = "bsky-password";
 
-static AGENT: OnceCell<AtpAgent<MemorySessionStore, ReqwestClient>> = OnceCell::const_new();
-
-pub struct Bsky;
+#[derive(Default)]
+pub struct Bsky {
+    pub agent: OnceCell<AtpAgent<MemorySessionStore, ReqwestClient>>,
+}
 
 #[async_trait]
 impl Service for Bsky {
-    fn host(&self) -> &str {
-        "bsky.app"
+    fn host_matches(&self, host: &str) -> bool {
+        host == "bsky.app"
     }
 
     fn secrets(&self) -> &[&str] {
         &[BSKY_IDENTIFIER, BSKY_PASSWORD]
+    }
+
+    fn name(&self) -> &str {
+        "bsky"
+    }
+
+    async fn authenticate(
+        &self,
+        _secrets: &HashMap<String, String>,
+        _previous_result: Option<HashMap<String, String>>,
+    ) -> Result<HashMap<String, String>, crate::Error> {
+        Ok(HashMap::default())
     }
 
     async fn import(
@@ -74,16 +87,16 @@ impl Service for Bsky {
         chronicle: &crate::Chronicle,
         url: url::Url,
         records: &mut Vec<Record>,
-        secrets: Arc<RwLock<HashMap<String, String>>>,
+        secrets: HashMap<String, String>,
+        _authentication: HashMap<String, String>,
     ) -> Result<(), crate::Error> {
-        let agent = AGENT
+        let agent = self
+            .agent
             .get_or_try_init::<crate::Error, _, _>(|| async move {
                 let agent = AtpAgent::new(
                     ReqwestClient::new("https://bsky.social"),
                     MemorySessionStore::default(),
                 );
-
-                let secrets = secrets.read().await;
 
                 let identifier = secrets[BSKY_IDENTIFIER].as_str();
                 let password = secrets[BSKY_PASSWORD].as_str();
