@@ -70,7 +70,7 @@ fn ensure_config() -> anyhow::Result<()> {
                 .parent()
                 .ok_or_else(|| anyhow::anyhow!("could not get config path directory"))?,
         )?;
-        fs::write(&ARGUMENTS.config, DEFAULT_CONFIG)?;
+        fs::write(&ARGUMENTS.config, &*DEFAULT_CONFIG)?;
     }
 
     Ok(())
