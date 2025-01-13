@@ -80,6 +80,13 @@ impl Chronicle {
         config.expand_paths()?;
 
         if !fs::exists(&config.database_path)? {
+            fs::create_dir_all(
+                &config
+                    .database_path
+                    .parent()
+                    .expect("could not create database directory"),
+            )?;
+
             fs::OpenOptions::new()
                 .write(true)
                 .create(true)
