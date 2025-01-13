@@ -1,5 +1,5 @@
 [workspace]
-members = ["chronicle", "chronicle-cli"]
+members = ["chronicle", "chronicle-cli", "chronicler/src-tauri"]
 resolver = "2"
 
 [workspace.package]
