@@ -1,6 +1,5 @@
 use std::{
     iter,
-    os::unix::process::ExitStatusExt,
     process::{ExitCode, ExitStatus},
     time::Duration,
 };
