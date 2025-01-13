@@ -403,6 +403,7 @@ dependencies = [
  "bincode",
  "bytemuck",
  "crc32fast",
+ "directories",
  "keyring",
  "lazy_static",
  "nom",

@@ -15,21 +15,19 @@ use std::{
     path::PathBuf,
 };
 
+use directories::ProjectDirs;
 use http::start_http_server;
 use models::ModelKind;
-use oauth2::{basic::BasicErrorResponseType, StandardErrorResponse};
 use parse::ParseError;
-use record::Record;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use sqlx::{migrate::MigrateError, Connection, SqlitePool, Transaction};
+use sqlx::{migrate::MigrateError, SqlitePool, Transaction};
 use tokio::task::JoinHandle;
 use tracing::{debug, error, info};
 
-pub const DEFAULT_CONFIG: &str = include_str!("../../default_config.toml");
-
 lazy_static::lazy_static! {
     pub static ref HTTP_CLIENT: Client = Client::new();
+    pub static ref DEFAULT_CONFIG: String = toml::to_string_pretty(&Config::default()).unwrap();
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -55,9 +53,20 @@ impl Config {
     }
 }
 
+impl Default for Config {
+    fn default() -> Self {
+        let project_dirs = ProjectDirs::from("dev.setaria", "HazelTheWitch", "chronicle")
+            .expect("could not get project directories");
+
+        Self {
+            database_path: project_dirs.data_dir().join("database.db"),
+            data_path: project_dirs.data_dir().join("works"),
+        }
+    }
+}
+
 pub struct Chronicle {
     pub pool: SqlitePool,
-    pub config_path: PathBuf,
     pub config: Config,
     pub http_task: JoinHandle<()>,
 }
@@ -67,15 +76,7 @@ impl Chronicle {
         self.pool.begin().await
     }
 
-    pub async fn from_path(config_path: impl Into<PathBuf>) -> Result<Self, Error> {
-        let path = config_path.into();
-
-        info!("Loading config from {path:?}");
-
-        let text = fs::read_to_string(&path)?;
-
-        let mut config: Config = toml::from_str(&text)?;
-
+    pub async fn from_config(mut config: Config) -> Result<Self, Error> {
         config.expand_paths()?;
 
         if !fs::exists(&config.database_path)? {
@@ -104,10 +105,21 @@ impl Chronicle {
 
         Ok(Chronicle {
             pool,
-            config_path: path,
             config,
             http_task,
         })
+    }
+
+    pub async fn from_path(config_path: impl Into<PathBuf>) -> Result<Self, Error> {
+        let path = config_path.into();
+
+        info!("Loading config from {path:?}");
+
+        let text = fs::read_to_string(&path)?;
+
+        let config: Config = toml::from_str(&text)?;
+
+        Self::from_config(config).await
     }
 }
 
