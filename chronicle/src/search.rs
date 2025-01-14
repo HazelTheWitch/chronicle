@@ -9,12 +9,17 @@ use std::{
 use builder::SearchQueryBuilder;
 use sqlx::{Execute, Sqlite, Transaction};
 
-use crate::{models::Work, parse::ParseError, tag::DiscriminatedTag, utils::hash_t, Chronicle};
+use crate::{
+    models::{Work, WorkId},
+    parse::ParseError,
+    tag::DiscriminatedTag,
+    utils::hash_t,
+    Chronicle,
+};
 
 pub mod builder;
 pub(crate) mod parse;
 
-// TODO: Add Id query term
 #[derive(PartialEq, Eq, Debug, Clone)]
 pub enum QueryTerm {
     Tag(DiscriminatedTag),
@@ -22,6 +27,7 @@ pub enum QueryTerm {
     Author(String),
     Caption(String),
     Url(String),
+    Id(WorkId),
 }
 
 impl Display for QueryTerm {
@@ -32,6 +38,7 @@ impl Display for QueryTerm {
             QueryTerm::Author(text) => write!(f, r#"author:"{text}""#),
             QueryTerm::Caption(text) => write!(f, r#"caption:"{text}""#),
             QueryTerm::Url(text) => write!(f, r#"url:"{text}""#),
+            QueryTerm::Id(id) => write!(f, r#"id:{id}"#),
         }
     }
 }
@@ -49,6 +56,7 @@ impl Hash for QueryTerm {
             QueryTerm::Author(text) => hash_and(state, 3, text),
             QueryTerm::Caption(text) => hash_and(state, 4, text),
             QueryTerm::Url(text) => hash_and(state, 5, text),
+            QueryTerm::Id(id) => hash_and(state, 6, id),
         }
     }
 }

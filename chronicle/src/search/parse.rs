@@ -1,14 +1,16 @@
+use std::str::FromStr;
+
 use nom::{
     branch::alt,
     bytes::complete::tag,
-    character::complete::{alphanumeric1, one_of, space0, space1},
-    combinator::{fail, map, recognize},
+    character::complete::{alphanumeric1, digit1, one_of, space0, space1},
+    combinator::{fail, map, map_res, recognize},
     multi::{many1, separated_list1},
     sequence::{delimited, pair, preceded, separated_pair, terminated},
     IResult,
 };
 
-use crate::{parse::string, tag::parse::discriminated_tag};
+use crate::{models::WorkId, parse::string, tag::parse::discriminated_tag};
 
 use super::{Query, QueryTerm};
 
@@ -20,10 +22,12 @@ fn term_kind(input: &str) -> IResult<&str, &str, nom::error::VerboseError<&str>>
         tag("author"),
         tag("caption"),
         tag("url"),
+        tag("id"),
         tag("t"),
         tag("a"),
         tag("c"),
         tag("u"),
+        tag("i"),
     ))(input)
 }
 
@@ -32,6 +36,9 @@ fn tagged_term(input: &str) -> IResult<&str, QueryTerm, nom::error::VerboseError
 
     match kind {
         "tag" => map(discriminated_tag, |t| QueryTerm::Tag(t.into()))(i),
+        "i" | "id" => map_res(digit1, |i: &str| {
+            Ok::<_, <i64 as FromStr>::Err>(QueryTerm::Id(WorkId(i.parse::<i64>()?)))
+        })(i),
         "t" | "title" => map(string, |s| QueryTerm::Title(s.to_owned()))(i),
         "a" | "artist" | "author" => map(string, |s| QueryTerm::Author(s.to_owned()))(i),
         "c" | "caption" => map(string, |s| QueryTerm::Caption(s.to_owned()))(i),

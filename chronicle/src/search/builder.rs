@@ -36,6 +36,10 @@ impl QueryTerm {
                 b.push("SELECT work_id FROM works WHERE url = ")
                     .push_bind(url);
             }
+            QueryTerm::Id(id) => {
+                b.push("SELECT work_id FROM works WHERE work_id = ")
+                    .push_bind(id);
+            }
         }
     }
 }

@@ -3,6 +3,7 @@ pub mod parse;
 use std::{fmt::Display, ops::Deref, str::FromStr};
 
 use parse::{discriminated_tag, tag_expression, tag_part, ParsedTag};
+use serde::{Deserialize, Serialize};
 use sqlx::{Acquire, Sqlite, Transaction};
 
 use crate::{
@@ -11,7 +12,7 @@ use crate::{
     search::Query,
 };
 
-#[derive(PartialEq, Eq, Debug, Clone, Hash)]
+#[derive(PartialEq, Eq, Debug, Clone, Hash, Deserialize, Serialize)]
 pub struct DiscriminatedTag {
     pub name: String,
     pub discriminator: Option<String>,

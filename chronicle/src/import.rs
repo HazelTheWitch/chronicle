@@ -75,12 +75,10 @@ pub fn write_secrets(
 }
 
 impl Work {
-    pub async fn import_works_from_url(
+    pub async fn import_records_from_url(
         chronicle: &Chronicle,
-        tx: &mut Transaction<'_, Sqlite>,
         url: &Url,
-        provided_details: Option<&RecordDetails>,
-    ) -> Result<Vec<Work>, crate::Error> {
+    ) -> Result<Vec<Record>, crate::Error> {
         let Some(host) = url.host_str() else {
             return Err(crate::Error::Generic(String::from(
                 "url does not have a host",
@@ -142,6 +140,17 @@ impl Work {
                 secrets.previous.expect("just filled"),
             )
             .await?;
+
+        Ok(records)
+    }
+
+    pub async fn import_works_from_url(
+        chronicle: &Chronicle,
+        tx: &mut Transaction<'_, Sqlite>,
+        url: &Url,
+        provided_details: Option<&RecordDetails>,
+    ) -> Result<Vec<Work>, crate::Error> {
+        let mut records = Self::import_records_from_url(&chronicle, url).await?;
 
         if let Some(provided_details) = provided_details {
             for record in records.iter_mut() {

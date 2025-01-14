@@ -168,7 +168,6 @@ impl Service for Bsky {
                     let mut writer = BufWriter::new(File::create_new(
                         chronicle.config.data_path.join(&file_name),
                     )?);
-
                     let request = reqwest::get(&image_url).await?;
 
                     let data = request.bytes().await?;

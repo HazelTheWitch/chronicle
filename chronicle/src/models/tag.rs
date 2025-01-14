@@ -4,7 +4,7 @@ use crate::id;
 
 use super::work::WorkId;
 
-#[derive(sqlx::FromRow)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize, sqlx::FromRow)]
 pub struct Tag {
     pub name: String,
     pub discriminator: Option<String>,
@@ -23,13 +23,13 @@ impl Display for Tag {
     }
 }
 
-#[derive(sqlx::FromRow)]
+#[derive(serde::Serialize, serde::Deserialize, sqlx::FromRow)]
 pub struct WorkTag {
     pub tag: TagId,
     pub work_id: WorkId,
 }
 
-#[derive(sqlx::FromRow)]
+#[derive(serde::Serialize, serde::Deserialize, sqlx::FromRow)]
 pub struct MetaTag {
     pub tag: TagId,
     pub target: TagId,

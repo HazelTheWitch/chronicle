@@ -11,7 +11,7 @@ use crate::{
 #[derive(Debug, Clone)]
 pub enum AuthorQuery {
     Name(String),
-    Id(i32),
+    Id(AuthorId),
     Url(url::Url),
 }
 
@@ -19,8 +19,8 @@ impl FromStr for AuthorQuery {
     type Err = Infallible;
 
     fn from_str(query: &str) -> Result<Self, Self::Err> {
-        if let Ok(id) = i32::from_str(query) {
-            return Ok(Self::Id(id));
+        if let Ok(id) = i64::from_str(query) {
+            return Ok(Self::Id(AuthorId(id)));
         } else if let Ok(url) = url::Url::from_str(query) {
             return Ok(Self::Url(url));
         }
