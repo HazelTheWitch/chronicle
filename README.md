@@ -14,9 +14,9 @@ Windows users can download the msi installer instead.
 Currently the list of supported websites for import is:
 - bsky
 - tumblr
+- twitter
 
 I am looking to expand this list to include:
-- twitter
 - pixiv
 
 If there is a site you would like to see added please [make an issue](https://github.com/HazelTheWitch/chronicle/issues/new) to let me know.

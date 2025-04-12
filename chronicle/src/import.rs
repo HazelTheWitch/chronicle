@@ -1,5 +1,6 @@
 pub mod bsky;
 pub mod tumblr;
+pub mod twitter;
 
 use std::{collections::HashMap, ops::Deref, sync::Arc};
 
@@ -7,6 +8,7 @@ use async_trait::async_trait;
 use keyring::Entry;
 use serde::{Deserialize, Serialize};
 use sqlx::{types::chrono, Acquire, Sqlite, Transaction};
+use twitter::Twitter;
 use url::Url;
 
 use crate::{
@@ -45,7 +47,7 @@ pub trait Service {
 }
 
 lazy_static::lazy_static! {
-    pub static ref SERVICES: Vec<Box<dyn Service + Send + Sync + 'static>> = vec![Box::new(bsky::Bsky::default()), Box::new(tumblr::Tumblr::default())];
+    pub static ref SERVICES: Vec<Box<dyn Service + Send + Sync + 'static>> = vec![Box::new(bsky::Bsky::default()), Box::new(tumblr::Tumblr::default()), Box::new(Twitter)];
 }
 
 pub fn write_secrets(
@@ -95,52 +97,54 @@ impl Work {
             )));
         };
 
-        let user = whoami::username();
+        let (secrets, previous) = if !service.secrets().is_empty() {
+            let user = whoami::username();
 
-        let entry =
-            Entry::new_with_target(service.name(), SERVICE_NAME, &user).map_err(|error| {
-                crate::Error::Keyring {
+            let entry =
+                Entry::new_with_target(service.name(), SERVICE_NAME, &user).map_err(|error| {
+                    crate::Error::Keyring {
+                        service: service.name().to_owned(),
+                        error,
+                    }
+                })?;
+
+            let mut secrets: StoredSecrets =
+                bincode::deserialize(&entry.get_secret().map_err(|error| {
+                    crate::Error::Keyring {
+                        service: service.name().to_owned(),
+                        error,
+                    }
+                })?)?;
+
+            for secret in service.secrets() {
+                if !secrets.secrets.contains_key(*secret) {
+                    return Err(crate::Error::Generic(format!(
+                        "{} does not have secret: {secret}",
+                        service.name()
+                    )));
+                }
+            }
+
+            secrets.previous = Some(
+                service
+                    .authenticate(&secrets.secrets, secrets.previous)
+                    .await?,
+            );
+
+            entry
+                .set_secret(&bincode::serialize(&secrets)?)
+                .map_err(|error| crate::Error::Keyring {
                     service: service.name().to_owned(),
                     error,
-                }
-            })?;
+                })?;
 
-        let mut secrets: StoredSecrets =
-            bincode::deserialize(&entry.get_secret().map_err(|error| crate::Error::Keyring {
-                service: service.name().to_owned(),
-                error,
-            })?)?;
-
-        for secret in service.secrets() {
-            if !secrets.secrets.contains_key(*secret) {
-                return Err(crate::Error::Generic(format!(
-                    "{} does not have secret: {secret}",
-                    service.name()
-                )));
-            }
-        }
-
-        secrets.previous = Some(
-            service
-                .authenticate(&secrets.secrets, secrets.previous)
-                .await?,
-        );
-
-        entry
-            .set_secret(&bincode::serialize(&secrets)?)
-            .map_err(|error| crate::Error::Keyring {
-                service: service.name().to_owned(),
-                error,
-            })?;
+            (secrets.secrets, secrets.previous.expect("just filled"))
+        } else {
+            (HashMap::new(), HashMap::new())
+        };
 
         service
-            .import(
-                &chronicle,
-                url.clone(),
-                &mut records,
-                secrets.secrets,
-                secrets.previous.expect("just filled"),
-            )
+            .import(&chronicle, url.clone(), &mut records, secrets, previous)
             .await?;
 
         if let Some(provided_details) = provided_details {

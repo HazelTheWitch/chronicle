@@ -30,7 +30,7 @@ impl Record {
     }
 }
 
-#[derive(Default, Clone)]
+#[derive(Default, Debug, Clone)]
 pub struct RecordDetails {
     pub title: Option<String>,
     pub url: Option<url::Url>,

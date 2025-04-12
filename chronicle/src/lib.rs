@@ -176,6 +176,8 @@ pub enum Error {
 pub enum ServiceError {
     #[error("error communicating with bsky: {0}")]
     Bsky(Box<dyn std::error::Error + Send + Sync>),
+    #[error("fixtweet returned invalid code: {0}")]
+    Twitter(u32),
 }
 
 impl<E> From<atrium_api::xrpc::Error<E>> for ServiceError

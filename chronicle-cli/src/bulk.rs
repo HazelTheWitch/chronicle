@@ -22,7 +22,6 @@ use uuid::Uuid;
 use crate::{
     args::{BulkCommand, WorkDetails},
     get_chronicle, write_failure, write_success, ERROR_STYLE, PREFIX_STYLE, SPINNER_STYLE,
-    TERMINAL,
 };
 
 pub async fn bulk_operation<

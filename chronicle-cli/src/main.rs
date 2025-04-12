@@ -28,7 +28,7 @@ use directories::ProjectDirs;
 use indicatif::ProgressStyle;
 use lazy_static::lazy_static;
 use logging::initialize_logging;
-use tag::{execute_tag_expression, tag_command};
+use tag::tag_command;
 use tokio::sync::OnceCell;
 use tracing::error;
 use work::work_command;
@@ -36,7 +36,7 @@ use work::work_command;
 lazy_static! {
     pub static ref ARGUMENTS: Arguments = Arguments::parse();
     pub static ref PROJECT_DIRS: ProjectDirs =
-        ProjectDirs::from("dev.setaria", "HazelTheWitch", "chronicle-cli")
+        ProjectDirs::from("dev.setaria", "HazelTheWitch", "chronicle")
             .expect("could not get project directories");
     pub static ref TERMINAL: Term = Term::stdout();
     pub static ref PREFIX_STYLE: Style = Style::new().green().bold();
